@@ -1,0 +1,1329 @@
+<title>Screen Workshop</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a workbench — blocks fill the bench, a narrow side drawer holds messages, code and help. */
+:root{
+  --bg:#ECF2EF; --surface:#FFFFFF; --sunk:#F5F8F7; --ink:#12302A; --muted:#557069; --line:#D2DED9;
+  --accent:#0F7B6C; --accent-ink:#FFFFFF; --go:#1C9A48; --stop:#CF3F3F; --sun:#FFC83D; --sun-ink:#3A2A00;
+  --lcd:#0B1A28; --lcd-ink:#9FE6D7; --err-bg:#FDECEC; --ok-bg:#E6F5EC;
+  --f-ui:"Rubik","Segoe UI",Arial,sans-serif; --f-code:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1917; --surface:#15221F; --sunk:#111C1A; --ink:#E3EEEB; --muted:#93ABA5; --line:#293A36;
+  --accent:#3CC4AE; --accent-ink:#06201B; --go:#2FBF63; --stop:#F06A6A; --sun:#FFD25E; --sun-ink:#2E2200;
+  --lcd:#050C14; --lcd-ink:#9FE6D7; --err-bg:#3A1C1C; --ok-bg:#163223; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1917; --surface:#15221F; --sunk:#111C1A; --ink:#E3EEEB; --muted:#93ABA5; --line:#293A36;
+  --accent:#3CC4AE; --accent-ink:#06201B; --go:#2FBF63; --stop:#F06A6A; --sun:#FFD25E; --sun-ink:#2E2200;
+  --lcd:#050C14; --lcd-ink:#9FE6D7; --err-bg:#3A1C1C; --ok-bg:#163223; color-scheme:dark}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15px}
+.app{height:100%;display:flex;flex-direction:column;gap:10px;padding-block:10px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));box-sizing:border-box}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+.brand{display:flex;align-items:center;gap:10px;margin-inline-end:auto}
+.brand-mark{width:30px;height:46px;border-radius:7px;background:var(--lcd);border:3px solid var(--accent);box-sizing:border-box;display:grid;place-items:center;color:var(--lcd-ink);font:500 9px var(--f-code)}
+.brand h1{font-size:21px;font-weight:700;margin:0;line-height:1.1}
+.brand small{display:block;color:var(--muted);font:400 12px var(--f-code);direction:ltr;text-align:left}
+.status{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:99px;background:var(--surface);border:1px solid var(--line);font-size:14px;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.status[data-s="on"] .dot{background:var(--go)} .status[data-s="run"] .dot{background:var(--sun);box-shadow:0 0 0 3px color-mix(in srgb,var(--sun) 35%,transparent)}
+.status[data-s="busy"] .dot{background:var(--accent)}
+.tools{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;cursor:pointer}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  padding:9px 14px;border-radius:var(--r);font-weight:500;font-size:15px;transition:transform .08s}
+.btn svg{width:18px;height:18px;flex:none}
+.btn:hover{border-color:var(--accent)} .btn:active{transform:translateY(1px)}
+.btn:focus-visible,.tab:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.go{background:var(--go);border-color:var(--go);color:#fff;font-size:17px;padding:9px 20px}
+.btn.stop{color:var(--stop)} .btn.stop:hover{border-color:var(--stop)}
+.btn.main{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.notice{background:var(--sun);color:var(--sun-ink);border-radius:var(--r);padding:10px 14px;font-size:14px;line-height:1.5}
+.bench{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:10px;min-height:0}
+#blocklyDiv{border-radius:var(--r);overflow:hidden;border:1px solid var(--line);min-height:300px;background:var(--surface)}
+.drawer{display:grid;grid-template-rows:auto 1fr;min-height:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid var(--line)}
+.tab{flex:1;border:0;background:none;color:var(--muted);padding:11px 6px;font-weight:500;border-bottom:3px solid transparent}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.pane{overflow:auto;min-height:0;padding:12px 14px}
+#log{display:flex;flex-direction:column;gap:6px;font-size:14px;line-height:1.5}
+.msg{padding:7px 10px;border-radius:8px;background:var(--sunk)}
+.msg.ok{background:var(--ok-bg)} .msg.err{background:var(--err-bg)}
+.msg.out{font-family:var(--f-code);font-size:13px;direction:ltr;text-align:left;white-space:pre-wrap;background:var(--lcd);color:var(--lcd-ink)}
+.msg details{margin-top:4px} .msg details pre{direction:ltr;text-align:left;white-space:pre-wrap;font:12px var(--f-code);margin:4px 0 0}
+#code{margin:0;direction:ltr;text-align:left;font:13px/1.6 var(--f-code);white-space:pre;color:var(--ink)}
+.help h3{font-size:16px;margin:4px 0 8px} .help ol,.help ul{padding-inline-start:20px;margin:0 0 14px;line-height:1.65}
+.help p{line-height:1.6;margin:0 0 12px;color:var(--muted)}
+.lcdmap{display:flex;gap:14px;align-items:center;margin:4px 0 14px}
+.lcdmap .scr{width:62px;height:115px;background:var(--lcd);border-radius:6px;position:relative;flex:none;border:3px solid var(--line)}
+.lcdmap .scr span{position:absolute;font:10px var(--f-code);color:var(--lcd-ink);direction:ltr}
+.lcdmap .scr .o{top:3px;left:4px} .lcdmap .scr .e{bottom:3px;right:4px}
+.lcdmap p{margin:0;font-size:13px}
+code{font-family:var(--f-code);font-size:.9em;direction:ltr;unicode-bidi:isolate}
+.overlay{position:fixed;inset:0;background:color-mix(in srgb,var(--ink) 45%,transparent);display:grid;place-items:center;padding:16px;z-index:50}
+.sheet{background:var(--surface);color:var(--ink);border-radius:16px;max-width:520px;width:100%;padding:22px;box-sizing:border-box;max-height:90vh;overflow:auto}
+.sheet h2{margin:0 0 6px;font-size:20px} .sheet ol{padding-inline-start:20px;line-height:1.7;margin:10px 0 16px}
+.sheet .row{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-start;margin-top:14px}
+.bar{height:10px;background:var(--sunk);border-radius:99px;overflow:hidden;border:1px solid var(--line);margin-top:12px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+#flashLog{font:12px var(--f-code);direction:ltr;text-align:left;color:var(--muted);white-space:pre-wrap;max-height:110px;overflow:auto;margin-top:8px}
+a{color:var(--accent)}
+.examples{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.examples .btn{padding:6px 10px;font-size:14px}
+input[type=file]{font:inherit;max-width:100%}
+@media (max-width:820px){
+  .app{height:auto;min-height:100%}
+  .bench{grid-template-columns:1fr}
+  #blocklyDiv{height:62vh}
+  .drawer{height:340px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">C3</div>
+      <div><h1>Screen Workshop</h1><small>ESP32-C3 · LCD 172×320</small></div>
+    </div>
+    <span class="status" id="status" data-s="off"><span class="dot"></span><span id="statusText">Not connected</span></span>
+    <div class="tools">
+      <button class="btn main" id="btnConnect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0V8zM12 18v4"/></svg><span>Connect board</span></button>
+      <button class="btn go" id="btnRun"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>Run</button>
+      <button class="btn stop" id="btnStop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop</button>
+      <button class="btn" id="btnSave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></svg>Save to board</button>
+      <button class="btn" id="btnFlash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>First-time setup</button>
+    </div>
+  </header>
+  <div class="notice" id="notice" hidden></div>
+  <div class="bench">
+    <div id="blocklyDiv"></div>
+    <aside class="drawer">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="t-log" aria-selected="true" data-p="p-log">Messages</button>
+        <button class="tab" role="tab" id="t-code" aria-selected="false" data-p="p-code">Python code</button>
+        <button class="tab" role="tab" id="t-help" aria-selected="false" data-p="p-help">Help</button>
+      </div>
+      <div class="pane" id="p-log"><div id="log"></div></div>
+      <div class="pane" id="p-code" hidden><pre id="code"></pre></div>
+      <div class="pane help" id="p-help" hidden>
+        <h3>Examples to start with</h3>
+        <div class="examples" id="examples"></div>
+        <h3>Getting started</h3>
+        <ol>
+          <li>Plug the board into the computer with a USB-C cable.</li>
+          <li>First time only: click <b>First-time setup</b> and install MicroPython.</li>
+          <li>Click <b>Connect board</b> and pick the board from the list.</li>
+          <li>Drag blocks and click <b>Run</b>. The result shows up on the screen.</li>
+          <li><b>Save to board</b> keeps your program, so it runs every time the board turns on.</li>
+        </ol>
+        <h3>The screen</h3>
+        <div class="lcdmap"><div class="scr"><span class="o">0,0</span><span class="e">171,319</span></div>
+          <p>Point <code>x=0, y=0</code> is the top-left corner. <code>x</code> grows to the right up to 171, and <code>y</code> grows downward up to 319.</p></div>
+        <h3>Tips</h3>
+        <ul>
+          <li>The screen shows English letters, numbers and symbols.</li>
+          <li>The <b>BOOT</b> button on the board also works as a button for your programs.</li>
+          <li>Tilt is measured in degrees, from about -90 to 90.</li>
+          <li>If the board stops responding: click <b>Stop</b>. If that doesn't help, press RESET on the board and connect again.</li>
+        </ul>
+        <h3>My project</h3>
+        <div class="examples">
+          <button class="btn" id="btnExport">Download project file</button>
+          <label class="btn" for="importFile">Open project file</label>
+          <input type="file" id="importFile" accept=".json" hidden>
+          <button class="btn" id="btnNew">Start over</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="overlay" id="flashSheet" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="flashTitle">
+    <h2 id="flashTitle">Install MicroPython (first time only)</h2>
+    <p style="margin:0;color:var(--muted);line-height:1.6">You do this once for each board. It erases whatever was on the board before.</p>
+    <ol>
+      <li>Download the ESP32-C3 firmware from <a href="https://micropython.org/download/ESP32_GENERIC_C3/" target="_blank" rel="noopener">micropython.org</a> (the <code>.bin</code> file from the latest stable release).</li>
+      <li>Choose the file here:<br><input type="file" id="fwFile" accept=".bin"></li>
+      <li>Click <b>Install</b> and pick the board from the list. If it doesn't work: unplug the board, hold down BOOT, plug it back in, then let go.</li>
+    </ol>
+    <div class="bar"><i id="flashBar"></i></div>
+    <div id="flashLog"></div>
+    <div class="row">
+      <button class="btn main" id="btnDoFlash">Install</button>
+      <button class="btn" id="btnCloseFlash">Close</button>
+    </div>
+  </div>
+</div>
+
+<script type="text/plain" id="boardpy">
+# board v2 - ESP32-C3-LCD-1.47 helper for Blockly kids
+from machine import Pin, SPI, I2C
+import framebuf, time, math, random
+
+VERSION = 2
+W = 172
+H = 320
+_XO = 34
+
+BLACK = 0x0000
+WHITE = 0xFFFF
+RED = 0xF800
+GREEN = 0x07E0
+BLUE = 0x001F
+YELLOW = 0xFFE0
+ORANGE = 0xFD20
+PURPLE = 0x801F
+PINK = 0xF81F
+CYAN = 0x07FF
+GRAY = 0x8410
+BROWN = 0x9A60
+
+# --- IO expander (0x24): LCD CS = bit0, LCD RST = bit1, SD CS = bit2, PWM = backlight
+_i2c = I2C(0, scl=Pin(3), sda=Pin(4), freq=400000)
+_io = 0xF7
+
+
+def _ex(reg, val):
+    _i2c.writeto(0x24, bytes((reg, val)))
+
+
+def _pin(p, v):
+    global _io
+    if v:
+        _io |= 1 << p
+    else:
+        _io &= ~(1 << p) & 0xFF
+    _ex(3, _io)
+
+
+_ex(2, 0xFF)
+_ex(3, _io)
+_pin(2, 1)
+time.sleep_ms(10)
+_pin(0, 0)
+time.sleep_ms(10)
+_pin(1, 1)
+time.sleep_ms(20)
+_pin(1, 0)
+time.sleep_ms(20)
+_pin(1, 1)
+time.sleep_ms(120)
+
+# --- ST7789 over SPI
+_spi = SPI(1, baudrate=40000000, polarity=0, phase=0, sck=Pin(7), mosi=Pin(5), miso=Pin(6))
+_dc = Pin(8, Pin.OUT, value=1)
+
+
+def _cmd(c, d=None):
+    _dc(0)
+    _spi.write(bytes((c,)))
+    if d:
+        _dc(1)
+        _spi.write(bytes(d))
+
+
+for _c, _d, _ms in (
+    (0x11, None, 120),
+    (0x36, (0x00,), 0),
+    (0x3A, (0x55,), 0),
+    (0xB0, (0x00, 0xE8), 0),
+    (0xB2, (0x0C, 0x0C, 0x00, 0x33, 0x33), 0),
+    (0xB7, (0x75,), 0),
+    (0xBB, (0x1A,), 0),
+    (0xC0, (0x80,), 0),
+    (0xC2, (0x01, 0xFF), 0),
+    (0xC3, (0x13,), 0),
+    (0xC4, (0x20,), 0),
+    (0xC6, (0x0F,), 0),
+    (0xD0, (0xA4, 0xA1), 0),
+    (0xE0, (0xD0, 0x0D, 0x14, 0x0D, 0x0D, 0x09, 0x38, 0x44, 0x4E, 0x3A, 0x17, 0x18, 0x2F, 0x30), 0),
+    (0xE1, (0xD0, 0x09, 0x0F, 0x08, 0x07, 0x14, 0x37, 0x44, 0x4D, 0x38, 0x15, 0x16, 0x2C, 0x2E), 0),
+    (0x21, None, 0),
+    (0x29, None, 20),
+    (0x36, (0x48,), 0),
+):
+    _cmd(_c, _d)
+    if _ms:
+        time.sleep_ms(_ms)
+
+
+def _win(x, y, w, h):
+    x0 = x + _XO
+    x1 = x0 + w - 1
+    y1 = y + h - 1
+    _cmd(0x2A, (x0 >> 8, x0 & 255, x1 >> 8, x1 & 255))
+    _cmd(0x2B, (y >> 8, y & 255, y1 >> 8, y1 & 255))
+    _dc(0)
+    _spi.write(b"\x2c")
+    _dc(1)
+
+
+def _px(c):
+    c = int(c) & 0xFFFF
+    return bytes((c & 255, c >> 8))
+
+
+def rgb(r, g, b):
+    r = max(0, min(255, int(r)))
+    g = max(0, min(255, int(g)))
+    b = max(0, min(255, int(b)))
+    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+
+
+def random_color():
+    return rgb(random.randint(40, 255), random.randint(40, 255), random.randint(40, 255))
+
+
+def box(x, y, w, h, c):
+    x = int(x)
+    y = int(y)
+    w = int(w)
+    h = int(h)
+    if x < 0:
+        w += x
+        x = 0
+    if y < 0:
+        h += y
+        y = 0
+    if x + w > W:
+        w = W - x
+    if y + h > H:
+        h = H - y
+    if w <= 0 or h <= 0:
+        return
+    _win(x, y, w, h)
+    p = _px(c)
+    n = w * h
+    if n >= 256:
+        chunk = p * 256
+        while n >= 256:
+            _spi.write(chunk)
+            n -= 256
+    if n:
+        _spi.write(p * n)
+
+
+def fill(c):
+    box(0, 0, W, H, c)
+
+
+def pixel(x, y, c):
+    x = int(x)
+    y = int(y)
+    if 0 <= x < W and 0 <= y < H:
+        _win(x, y, 1, 1)
+        _spi.write(_px(c))
+
+
+def line(x0, y0, x1, y1, c):
+    x0 = int(x0)
+    y0 = int(y0)
+    x1 = int(x1)
+    y1 = int(y1)
+    if x0 == x1:
+        box(x0, min(y0, y1), 1, abs(y1 - y0) + 1, c)
+        return
+    if y0 == y1:
+        box(min(x0, x1), y0, abs(x1 - x0) + 1, 1, c)
+        return
+    dx = abs(x1 - x0)
+    dy = -abs(y1 - y0)
+    sx = 1 if x0 < x1 else -1
+    sy = 1 if y0 < y1 else -1
+    err = dx + dy
+    while True:
+        pixel(x0, y0, c)
+        if x0 == x1 and y0 == y1:
+            break
+        e2 = 2 * err
+        if e2 >= dy:
+            err += dy
+            x0 += sx
+        if e2 <= dx:
+            err += dx
+            y0 += sy
+
+
+def rect(x, y, w, h, c, full=True):
+    if full:
+        box(x, y, w, h, c)
+    else:
+        box(x, y, w, 1, c)
+        box(x, y + h - 1, w, 1, c)
+        box(x, y, 1, h, c)
+        box(x + w - 1, y, 1, h, c)
+
+
+def circle(cx, cy, r, c, full=True):
+    cx = int(cx)
+    cy = int(cy)
+    r = int(r)
+    if r <= 0:
+        pixel(cx, cy, c)
+        return
+    if full:
+        for dy in range(-r, r + 1):
+            dx = int(math.sqrt(r * r - dy * dy))
+            box(cx - dx, cy + dy, 2 * dx + 1, 1, c)
+        return
+    x = r
+    y = 0
+    err = 1 - r
+    while x >= y:
+        for px, py in ((x, y), (y, x), (-y, x), (-x, y), (-x, -y), (-y, -x), (y, -x), (x, -y)):
+            pixel(cx + px, cy + py, c)
+        y += 1
+        if err < 0:
+            err += 2 * y + 1
+        else:
+            x -= 1
+            err += 2 * (y - x) + 1
+
+
+def text(s, x, y, size=2, c=WHITE, bg=BLACK):
+    s = str(s)
+    x = int(x)
+    y = int(y)
+    size = max(1, min(8, int(size)))
+    room = (W - x) // (8 * size)
+    if room <= 0 or y >= H:
+        return
+    s = s[:room]
+    n = len(s)
+    if n == 0:
+        return
+    fb = framebuf.FrameBuffer(bytearray(n * 8), n * 8, 8, framebuf.MONO_HLSB)
+    fb.text(s, 0, 0, 1)
+    pw = n * 8 * size
+    rows = min(8 * size, H - y)
+    _win(x, y, pw, rows)
+    fg = _px(c) * size
+    bk = _px(bg) * size
+    ln = bytearray(pw * 2)
+    step = 2 * size
+    done = 0
+    for row in range(8):
+        i = 0
+        for col in range(n * 8):
+            ln[i:i + step] = fg if fb.pixel(col, row) else bk
+            i += step
+        for _ in range(size):
+            if done < rows:
+                _spi.write(ln)
+                done += 1
+
+
+def brightness(p):
+    p = max(0, min(100, int(p)))
+    _ex(5, p * 255 // 100)
+
+
+# --- BOOT button (GPIO9)
+_btn = Pin(9, Pin.IN, Pin.PULL_UP)
+
+
+def button():
+    return _btn.value() == 0
+
+
+def wait_button():
+    while not button():
+        time.sleep_ms(20)
+    while button():
+        time.sleep_ms(20)
+
+
+# --- QMI8658 motion sensor (0x6B)
+_imu = False
+_big = False
+try:
+    for _r, _v in ((0x02, 0x40), (0x03, 0x23), (0x04, 0x53), (0x05, 0x00), (0x06, 0x11), (0x07, 0x00), (0x08, 0x03)):
+        _i2c.writeto_mem(0x6B, _r, bytes((_v,)))
+    time.sleep_ms(50)
+    _imu = True
+except OSError:
+    pass
+
+
+def _raw():
+    b = _i2c.readfrom_mem(0x6B, 0x35, 6)
+    out = []
+    for i in range(3):
+        if _big:
+            v = (b[2 * i] << 8) | b[2 * i + 1]
+        else:
+            v = b[2 * i] | (b[2 * i + 1] << 8)
+        if v > 32767:
+            v -= 65536
+        out.append(v / 4096)
+    return out
+
+
+if _imu:
+    try:
+        _a = _raw()
+        _m1 = abs(math.sqrt(_a[0] ** 2 + _a[1] ** 2 + _a[2] ** 2) - 1)
+        _big = True
+        _a = _raw()
+        _m2 = abs(math.sqrt(_a[0] ** 2 + _a[1] ** 2 + _a[2] ** 2) - 1)
+        _big = _m2 < _m1
+    except OSError:
+        _imu = False
+
+
+def accel():
+    if not _imu:
+        return [0.0, 0.0, 1.0]
+    try:
+        return _raw()
+    except OSError:
+        return [0.0, 0.0, 1.0]
+
+
+def _deg(v):
+    return round(math.degrees(math.asin(max(-1.0, min(1.0, v)))))
+
+
+def tilt_lr():
+    return _deg(accel()[0])
+
+
+def tilt_fb():
+    return _deg(accel()[1])
+
+
+def shaken():
+    a = accel()
+    return math.sqrt(a[0] ** 2 + a[1] ** 2 + a[2] ** 2) > 1.6
+
+
+def wait(sec):
+    time.sleep(sec)
+
+
+def millis():
+    return time.ticks_ms()
+
+
+# --- shapes and animals
+_SPRITES = {
+    "dog": (
+        "................",
+        ".DD..XXXXXX..DD.",
+        "DDDDXXXXXXXXDDDD",
+        "DDDXXXXXXXXXXDDD",
+        "DDDXXwkXXkwXXDDD",
+        "DDDXXXXXXXXXXDDD",
+        "DDDXXXXXXXXXXDDD",
+        ".DDXXXwwwwXXXDD.",
+        ".DDXXwwkkwwXXDD.",
+        "..DXXwwwwwwXXD..",
+        "...XXwwkkwwXX...",
+        "...XXXwrrwXXX...",
+        "....XXXrrXXX....",
+        ".....XXXXXX.....",
+        "................",
+        "................",
+    ),
+    "cat": (
+        ".X............X.",
+        ".XX..........XX.",
+        ".XrX........XrX.",
+        ".XrrXXXXXXXXrrX.",
+        ".XXXXXXXXXXXXXX.",
+        "XXXXXXXXXXXXXXXX",
+        "XXXwwXXXXXXwwXXX",
+        "XXXwkXXXXXXkwXXX",
+        "XXXXXXXXXXXXXXXX",
+        "kkkXXXXrrXXXXkkk",
+        "XXXXXXXXXXXXXXXX",
+        "kkkXXXkXXkXXXkkk",
+        ".XXXXXXkkXXXXXX.",
+        "..XXXXXXXXXXXX..",
+        "...XXXXXXXXXX...",
+        "................",
+    ),
+    "rabbit": (
+        "...XX......XX...",
+        "..XrrX....XrrX..",
+        "..XrrX....XrrX..",
+        "..XrrX....XrrX..",
+        "..XrrX....XrrX..",
+        "..XXXXXXXXXXXX..",
+        ".XXXXXXXXXXXXXX.",
+        ".XXXkXXXXXXkXXX.",
+        ".XXXXXXXXXXXXXX.",
+        ".XXXXXXrrXXXXXX.",
+        ".XXXXXkXXkXXXXX.",
+        "..XXXXXwwXXXXX..",
+        "...XXXXXXXXXX...",
+        "....XXXXXXXX....",
+        "................",
+        "................",
+    ),
+    "bear": (
+        "................",
+        ".DDD........DDD.",
+        "DDrDXXXXXXXXDrDD",
+        ".DDXXXXXXXXXXDD.",
+        "..XXXXXXXXXXXX..",
+        ".XXXXXXXXXXXXXX.",
+        ".XXXkXXXXXXkXXX.",
+        ".XXXXXXXXXXXXXX.",
+        ".XXXXXwwwwXXXXX.",
+        ".XXXXwwkkwwXXXX.",
+        ".XXXXwwwwwwXXXX.",
+        "..XXXXwkkwXXXX..",
+        "...XXXXXXXXXX...",
+        "....XXXXXXXX....",
+        "................",
+        "................",
+    ),
+    "frog": (
+        "................",
+        "..www......www..",
+        ".wwkkw....wkkww.",
+        ".wwkkwXXXXwkkww.",
+        ".XwwwXXXXXXwwwX.",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXkXXkXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XkkXXXXXXXXXXkkX",
+        "XXkkkkkkkkkkkkXX",
+        ".XXXXXXXXXXXXXX.",
+        "..XXXXXXXXXXXX..",
+        "..DD........DD..",
+        ".DDDD......DDDD.",
+        "................",
+        "................",
+    ),
+    "crocodile": (
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "........XwkX....",
+        "...D.D.XXXXXX...",
+        "..XXXXXXXXXXXXXX",
+        "XXXXXXXXXXwXwXwX",
+        "..XXXXXXXkkkkkkk",
+        "..XXXXXXXwXwXwX.",
+        "...XXXXXXXXXXX..",
+        "...XX...XX......",
+        "...DD...DD......",
+        "................",
+        "................",
+    ),
+    "fish": (
+        "................",
+        "................",
+        "................",
+        "........D.......",
+        ".......DDD......",
+        ".....XXXXXXX....",
+        "X...XXXXXXXXX...",
+        "XX.XXXXXXXXwkX..",
+        "XXXXXXXXXXXXXXX.",
+        "XX.XXXXXXXXXXrr.",
+        "X...XXXXXXXXX...",
+        ".....XXXXXXX....",
+        ".......DD.......",
+        "................",
+        "................",
+        "................",
+    ),
+    "bird": (
+        "................",
+        "................",
+        "................",
+        "..........XX....",
+        ".........XXXX...",
+        ".........XXwkoo.",
+        "...DD....XXXXo..",
+        "..DDDDXXXXXXX...",
+        ".XXXXXXXXXXXX...",
+        "XXXXXXXXXXXX....",
+        "...XXXXXXXX.....",
+        ".....o...o......",
+        "....oo..oo......",
+        "................",
+        "................",
+        "................",
+    ),
+    "turtle": (
+        "................",
+        "......DDDD......",
+        "......DkkD......",
+        ".......DD.......",
+        "..DD.XXXXXX.DD..",
+        "..DDXXDXXDXXDD..",
+        "....XDXXXXDX....",
+        "...XXXXDDXXXX...",
+        "...XXXDXXDXXX...",
+        "...XXXXDDXXXX...",
+        "....XDXXXXDX....",
+        "..DDXXDXXDXXDD..",
+        "..DD.XXXXXX.DD..",
+        ".......DD.......",
+        "........D.......",
+        "................",
+    ),
+}
+
+
+def _dark(c):
+    c = int(c) & 0xFFFF
+    r = ((c >> 11) & 31) * 6 // 10
+    g = ((c >> 5) & 63) * 6 // 10
+    b = (c & 31) * 6 // 10
+    return (r << 11) | (g << 5) | b
+
+
+def _poly(pts, c):
+    ys = [p[1] for p in pts]
+    y0 = max(0, int(min(ys)))
+    y1 = min(H - 1, int(max(ys)))
+    n = len(pts)
+    for y in range(y0, y1 + 1):
+        yc = y + 0.5
+        xs = []
+        for i in range(n):
+            ax, ay = pts[i]
+            bx, by = pts[(i + 1) % n]
+            if (ay <= yc < by) or (by <= yc < ay):
+                xs.append(ax + (yc - ay) * (bx - ax) / (by - ay))
+        xs.sort()
+        for j in range(0, len(xs) - 1, 2):
+            xa = int(xs[j] + 0.5)
+            xb = int(xs[j + 1] + 0.5)
+            if xb > xa:
+                box(xa, y, xb - xa, 1, c)
+
+
+def _ring(cx, cy, r, sides, start, inner=0):
+    pts = []
+    k = sides * 2 if inner else sides
+    for i in range(k):
+        a = math.radians(start + 360 * i / k)
+        rr = r * inner if (inner and i % 2) else r
+        pts.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    return pts
+
+
+def _heart(cx, cy, r):
+    pts = []
+    for i in range(32):
+        t = 2 * math.pi * i / 32
+        x = 16 * math.sin(t) ** 3
+        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
+        pts.append((cx + x * r / 17, cy - (y + 2) * r / 17))
+    return pts
+
+
+_POLY = {
+    "triangle": (3, -90, 0),
+    "square": (4, -45, 0),
+    "diamond": (4, -90, 0),
+    "pentagon": (5, -90, 0),
+    "hexagon": (6, -90, 0),
+    "octagon": (8, -67.5, 0),
+    "star": (5, -90, 0.42),
+}
+
+
+def shape(name, cx, cy, size=64, c=WHITE):
+    cx = int(cx)
+    cy = int(cy)
+    size = max(4, int(size))
+    if name in _SPRITES:
+        s = max(1, size // 16)
+        x0 = cx - 8 * s
+        y0 = cy - 8 * s
+        pal = {"X": c, "D": _dark(c), "k": BLACK, "w": WHITE, "r": rgb(255, 110, 150), "o": ORANGE}
+        for j, row in enumerate(_SPRITES[name]):
+            i = 0
+            while i < 16:
+                ch = row[i]
+                k = i
+                while k < 16 and row[k] == ch:
+                    k += 1
+                if ch != ".":
+                    box(x0 + i * s, y0 + j * s, (k - i) * s, s, pal[ch])
+                i = k
+        return
+    r = size / 2
+    if name == "heart":
+        _poly(_heart(cx, cy, r), c)
+    elif name in _POLY:
+        n, start, inner = _POLY[name]
+        _poly(_ring(cx, cy, r, n, start, inner), c)
+    else:
+        circle(cx, cy, r, c, True)
+
+
+brightness(100)
+fill(BLACK)
+</script>
+<script>
+document.documentElement.lang = 'en';
+document.documentElement.dir = 'ltr';
+/* Blockly comes from a CDN; each file falls back to a second CDN if the first one fails. */
+const CDNS = ['https://cdn.jsdelivr.net/npm/', 'https://unpkg.com/'];
+const BLOCKLY_FILES = ['blockly_compressed.js', 'blocks_compressed.js', 'python_compressed.js', 'msg/en.js'];
+function loadScript(src){
+  return new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = src;
+    s.onload = res; s.onerror = () => { s.remove(); rej(new Error(src)); };
+    document.head.appendChild(s);
+  });
+}
+async function loadBlockly(){
+  for (const f of BLOCKLY_FILES) {
+    let ok = false;
+    for (const cdn of CDNS) { try { await loadScript(cdn + 'blockly@11.2.1/' + f); ok = true; break; } catch(e) {} }
+    if (!ok) return false;
+  }
+  return typeof window.Blockly !== 'undefined' && typeof window.python !== 'undefined';
+}
+function showLoadError(){
+  const d = document.getElementById('blocklyDiv');
+  d.innerHTML = '<div style="padding:24px;line-height:1.7;max-width:46ch"><h2 style="margin:0 0 8px;font-size:19px">The block editor didn\'t load</h2>' +
+    '<p style="margin:0 0 8px">The app needs an internet connection to load the block editor.</p>' +
+    '<p style="margin:0 0 12px;color:var(--muted)">Check that you\'re online. On a school computer, the network may be blocking <code>cdn.jsdelivr.net</code> and <code>unpkg.com</code>. Ask the IT team to allow them.</p>' +
+    '<button class="btn main" onclick="location.reload()">Try again</button></div>';
+}
+loadBlockly().then(ok => { if (ok) start(); else showLoadError(); });
+
+function start(){
+const BOARD_PY = document.getElementById('boardpy').textContent.replace(/^\n/, '');
+const BOARD_TAG = '# board v2';
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ---------- colours ---------- */
+const COLORS = [
+  ['BLACK','#000000','black'],['WHITE','#FFFFFF','white'],['RED','#FF2A2A','red'],['GREEN','#22C55E','green'],
+  ['BLUE','#2563EB','blue'],['YELLOW','#FFE11A','yellow'],['ORANGE','#FF9F1A','orange'],['PURPLE','#8B2BE2','purple'],
+  ['PINK','#FF3FB4','pink'],['CYAN','#22D3EE','cyan'],['GRAY','#8A8F98','gray'],['BROWN','#9A5B2E','brown']];
+const swatch = hex => 'data:image/svg+xml,' + encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="18"><rect x="1" y="1" width="24" height="16" rx="4" fill="${hex}" stroke="#00000055"/></svg>`);
+
+/* ---------- shape menu ---------- */
+const SPRITES = {"dog":["................",".DD..XXXXXX..DD.","DDDDXXXXXXXXDDDD","DDDXXXXXXXXXXDDD","DDDXXwkXXkwXXDDD","DDDXXXXXXXXXXDDD","DDDXXXXXXXXXXDDD",".DDXXXwwwwXXXDD.",".DDXXwwkkwwXXDD.","..DXXwwwwwwXXD..","...XXwwkkwwXX...","...XXXwrrwXXX...","....XXXrrXXX....",".....XXXXXX.....","................","................"],"cat":[".X............X.",".XX..........XX.",".XrX........XrX.",".XrrXXXXXXXXrrX.",".XXXXXXXXXXXXXX.","XXXXXXXXXXXXXXXX","XXXwwXXXXXXwwXXX","XXXwkXXXXXXkwXXX","XXXXXXXXXXXXXXXX","kkkXXXXrrXXXXkkk","XXXXXXXXXXXXXXXX","kkkXXXkXXkXXXkkk",".XXXXXXkkXXXXXX.","..XXXXXXXXXXXX..","...XXXXXXXXXX...","................"],"rabbit":["...XX......XX...","..XrrX....XrrX..","..XrrX....XrrX..","..XrrX....XrrX..","..XrrX....XrrX..","..XXXXXXXXXXXX..",".XXXXXXXXXXXXXX.",".XXXkXXXXXXkXXX.",".XXXXXXXXXXXXXX.",".XXXXXXrrXXXXXX.",".XXXXXkXXkXXXXX.","..XXXXXwwXXXXX..","...XXXXXXXXXX...","....XXXXXXXX....","................","................"],"bear":["................",".DDD........DDD.","DDrDXXXXXXXXDrDD",".DDXXXXXXXXXXDD.","..XXXXXXXXXXXX..",".XXXXXXXXXXXXXX.",".XXXkXXXXXXkXXX.",".XXXXXXXXXXXXXX.",".XXXXXwwwwXXXXX.",".XXXXwwkkwwXXXX.",".XXXXwwwwwwXXXX.","..XXXXwkkwXXXX..","...XXXXXXXXXX...","....XXXXXXXX....","................","................"],"frog":["................","..www......www..",".wwkkw....wkkww.",".wwkkwXXXXwkkww.",".XwwwXXXXXXwwwX.","XXXXXXXXXXXXXXXX","XXXXXXkXXkXXXXXX","XXXXXXXXXXXXXXXX","XkkXXXXXXXXXXkkX","XXkkkkkkkkkkkkXX",".XXXXXXXXXXXXXX.","..XXXXXXXXXXXX..","..DD........DD..",".DDDD......DDDD.","................","................"],"crocodile":["................","................","................","................","................","........XwkX....","...D.D.XXXXXX...","..XXXXXXXXXXXXXX","XXXXXXXXXXwXwXwX","..XXXXXXXkkkkkkk","..XXXXXXXwXwXwX.","...XXXXXXXXXXX..","...XX...XX......","...DD...DD......","................","................"],"fish":["................","................","................","........D.......",".......DDD......",".....XXXXXXX....","X...XXXXXXXXX...","XX.XXXXXXXXwkX..","XXXXXXXXXXXXXXX.","XX.XXXXXXXXXXrr.","X...XXXXXXXXX...",".....XXXXXXX....",".......DD.......","................","................","................"],"bird":["................","................","................","..........XX....",".........XXXX...",".........XXwkoo.","...DD....XXXXo..","..DDDDXXXXXXX...",".XXXXXXXXXXXX...","XXXXXXXXXXXX....","...XXXXXXXX.....",".....o...o......","....oo..oo......","................","................","................"],"turtle":["................","......DDDD......","......DkkD......",".......DD.......","..DD.XXXXXX.DD..","..DDXXDXXDXXDD..","....XDXXXXDX....","...XXXXDDXXXX...","...XXXDXXDXXX...","...XXXXDDXXXX...","....XDXXXXDX....","..DDXXDXXDXXDD..","..DD.XXXXXX.DD..",".......DD.......","........D.......","................"]};
+const SHAPES = [
+  ['dog','dog'],['cat','cat'],['crocodile','crocodile'],['rabbit','rabbit'],['bear','bear'],['frog','frog'],
+  ['fish','fish'],['bird','bird'],['turtle','turtle'],
+  ['star','star'],['heart','heart'],['triangle','triangle'],['square','square'],['diamond','diamond'],
+  ['pentagon','pentagon'],['hexagon','hexagon'],['octagon','octagon']];
+const ICON_BODY = {dog:'#AA6E3C', cat:'#FFA01E', rabbit:'#EBEBEB', bear:'#965F32', frog:'#3CBE50', crocodile:'#32A046',
+  fish:'#2878F0', bird:'#F03C3C', turtle:'#3CAA5A'};
+const POLY = {triangle:[3,-90,0], square:[4,-45,0], diamond:[4,-90,0], pentagon:[5,-90,0], hexagon:[6,-90,0], octagon:[8,-67.5,0], star:[5,-90,0.42]};
+const darken = hex => '#' + [1,3,5].map(i => Math.round(parseInt(hex.substr(i,2),16)*.6).toString(16).padStart(2,'0')).join('');
+function shapePoints(name, cx, cy, r){
+  if (name === 'heart') {
+    const pts = [];
+    for (let i = 0; i < 32; i++) { const t = 2*Math.PI*i/32;
+      const x = 16*Math.sin(t)**3, y = 13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
+      pts.push([cx + x*r/17, cy - (y+2)*r/17]); }
+    return pts;
+  }
+  const [n, start, inner] = POLY[name], k = inner ? n*2 : n, pts = [];
+  for (let i = 0; i < k; i++) { const a = (start + 360*i/k) * Math.PI/180, rr = inner && i%2 ? r*inner : r;
+    pts.push([cx + rr*Math.cos(a), cy + rr*Math.sin(a)]); }
+  return pts;
+}
+function shapeIcon(name){
+  let body = '';
+  if (SPRITES[name]) {
+    const X = ICON_BODY[name], pal = {X, D:darken(X), k:'#000', w:'#fff', r:'#FF6E96', o:'#FFA01E'};
+    SPRITES[name].forEach((row, y) => { let i = 0;
+      while (i < 16) { const ch = row[i]; let k = i; while (k < 16 && row[k] === ch) k++;
+        if (ch !== '.') body += `<rect x="${i}" y="${y}" width="${k-i}" height="1" fill="${pal[ch]}"/>`; i = k; } });
+    return 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="32" height="32" shape-rendering="crispEdges">${body}</svg>`);
+  }
+  const pts = shapePoints(name, 16, 16, 14).map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
+  return 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"><polygon points="${pts}" fill="#FFFFFF"/></svg>`);
+}
+
+/* ---------- blocks ---------- */
+const C_SCREEN = '#0F7B6C', C_COLOR = '#C2410C', C_INPUT = '#7C3AED', C_TIME = '#B45309';
+const num = n => ({shadow:{type:'math_number', fields:{NUM:n}}});
+const col = c => ({shadow:{type:'color_pick', fields:{C:c}}});
+const txt = t => ({shadow:{type:'text', fields:{TEXT:t}}});
+
+Blockly.common.defineBlocksWithJsonArray([
+  {type:'color_pick', message0:'%1', args0:[{type:'field_dropdown', name:'C',
+    options: COLORS.map(([k,hex,name]) => [{src:swatch(hex), width:26, height:18, alt:name}, k])}],
+    output:'Colour', colour:C_COLOR, tooltip:'Pick a colour'},
+  {type:'color_rgb', message0:'colour: red %1 green %2 blue %3', args0:[
+    {type:'input_value', name:'R', check:'Number'},{type:'input_value', name:'G', check:'Number'},{type:'input_value', name:'B', check:'Number'}],
+    inputsInline:true, output:'Colour', colour:C_COLOR, tooltip:'Mix your own colour. Each number goes from 0 to 255'},
+  {type:'color_random', message0:'random colour', output:'Colour', colour:C_COLOR, tooltip:'A different colour every time'},
+  {type:'screen_fill', message0:'fill screen with %1', args0:[{type:'input_value', name:'COLOR', check:'Colour'}],
+    previousStatement:null, nextStatement:null, colour:C_SCREEN, tooltip:'Paints the whole screen one colour'},
+  {type:'screen_text', message0:'write %1 at x %2 y %3 size %4 colour %5', args0:[
+    {type:'input_value', name:'TEXT'},{type:'input_value', name:'X', check:'Number'},{type:'input_value', name:'Y', check:'Number'},
+    {type:'field_dropdown', name:'SIZE', options:[['1','1'],['2','2'],['3','3'],['4','4'],['5','5'],['6','6']]},
+    {type:'input_value', name:'COLOR', check:'Colour'}],
+    inputsInline:true, previousStatement:null, nextStatement:null, colour:C_SCREEN, tooltip:'Writes text or a number on the screen'},
+  {type:'screen_shape', message0:'draw %1 at x %2 y %3 size %4 colour %5', args0:[
+    {type:'field_dropdown', name:'SHAPE', options: SHAPES.map(([k, label]) => [{src:shapeIcon(k), width:32, height:32, alt:label}, k])},
+    {type:'input_value', name:'X', check:'Number'},{type:'input_value', name:'Y', check:'Number'},
+    {type:'input_value', name:'SIZE', check:'Number'},{type:'input_value', name:'COLOR', check:'Colour'}],
+    inputsInline:true, previousStatement:null, nextStatement:null, colour:C_SCREEN,
+    tooltip:'Draws a shape or an animal. x,y is its centre and size is how wide it is. Animals use the colour for their body.'},
+  {type:'screen_rect', message0:'rectangle x %1 y %2 width %3 height %4 colour %5 filled %6', args0:[
+    {type:'input_value', name:'X', check:'Number'},{type:'input_value', name:'Y', check:'Number'},
+    {type:'input_value', name:'W', check:'Number'},{type:'input_value', name:'H', check:'Number'},
+    {type:'input_value', name:'COLOR', check:'Colour'},{type:'field_checkbox', name:'FULL', checked:true}],
+    inputsInline:true, previousStatement:null, nextStatement:null, colour:C_SCREEN, tooltip:'Draws a rectangle. x,y is its top-left corner'},
+  {type:'screen_circle', message0:'circle at x %1 y %2 radius %3 colour %4 filled %5', args0:[
+    {type:'input_value', name:'X', check:'Number'},{type:'input_value', name:'Y', check:'Number'},
+    {type:'input_value', name:'R', check:'Number'},{type:'input_value', name:'COLOR', check:'Colour'},
+    {type:'field_checkbox', name:'FULL', checked:true}],
+    inputsInline:true, previousStatement:null, nextStatement:null, colour:C_SCREEN, tooltip:'Draws a circle around its centre point'},
+  {type:'screen_line', message0:'line from x %1 y %2 to x %3 y %4 colour %5', args0:[
+    {type:'input_value', name:'X1', check:'Number'},{type:'input_value', name:'Y1', check:'Number'},
+    {type:'input_value', name:'X2', check:'Number'},{type:'input_value', name:'Y2', check:'Number'},
+    {type:'input_value', name:'COLOR', check:'Colour'}],
+    inputsInline:true, previousStatement:null, nextStatement:null, colour:C_SCREEN, tooltip:'Draws a straight line between two points'},
+  {type:'screen_pixel', message0:'dot at x %1 y %2 colour %3', args0:[
+    {type:'input_value', name:'X', check:'Number'},{type:'input_value', name:'Y', check:'Number'},{type:'input_value', name:'COLOR', check:'Colour'}],
+    inputsInline:true, previousStatement:null, nextStatement:null, colour:C_SCREEN, tooltip:'Colours a single pixel'},
+  {type:'screen_bright', message0:'screen brightness %1 %', args0:[{type:'input_value', name:'P', check:'Number'}],
+    inputsInline:true, previousStatement:null, nextStatement:null, colour:C_SCREEN, tooltip:'0 = off, 100 = brightest'},
+  {type:'input_button', message0:'BOOT button pressed?', output:'Boolean', colour:C_INPUT, tooltip:'True while the button is held down'},
+  {type:'input_wait', message0:'wait for BOOT press', previousStatement:null, nextStatement:null, colour:C_INPUT, tooltip:'The program waits until the button is pressed and let go'},
+  {type:'imu_tilt', message0:'tilt %1 (degrees)', args0:[{type:'field_dropdown', name:'AXIS', options:[['left-right','LR'],['forward-back','FB']]}],
+    output:'Number', colour:C_INPUT, tooltip:'How far the board is tilted, from about -90 to 90'},
+  {type:'imu_shaken', message0:'board shaken?', output:'Boolean', colour:C_INPUT, tooltip:'True when you shake the board hard'},
+  {type:'time_wait', message0:'wait %1 seconds', args0:[{type:'input_value', name:'S', check:'Number'}],
+    inputsInline:true, previousStatement:null, nextStatement:null, colour:C_TIME, tooltip:'Pauses before the next block'},
+  {type:'loop_forever', message0:'repeat forever', message1:'%1', args1:[{type:'input_statement', name:'DO'}],
+    previousStatement:null, colour:'#5B80A5', tooltip:'The blocks inside run again and again until you click Stop'},
+]);
+
+/* ---------- python ---------- */
+const P = python.pythonGenerator, O = python.Order;
+P.addReservedWords('shape,fill,text,rect,circle,line,pixel,box,brightness,rgb,random_color,button,wait_button,tilt_lr,tilt_fb,shaken,wait,millis,accel,W,H');
+const v = (b, n, d) => P.valueToCode(b, n, O.NONE) || d;
+P.forBlock['color_pick'] = b => [b.getFieldValue('C'), O.ATOMIC];
+P.forBlock['color_rgb'] = b => [`rgb(${v(b,'R','0')}, ${v(b,'G','0')}, ${v(b,'B','0')})`, O.FUNCTION_CALL];
+P.forBlock['color_random'] = () => ['random_color()', O.FUNCTION_CALL];
+P.forBlock['screen_fill'] = b => `fill(${v(b,'COLOR','BLACK')})\n`;
+P.forBlock['screen_text'] = b => `text(${v(b,'TEXT',"''")}, ${v(b,'X','0')}, ${v(b,'Y','0')}, ${b.getFieldValue('SIZE')}, ${v(b,'COLOR','WHITE')})\n`;
+P.forBlock['screen_shape'] = b => `shape('${b.getFieldValue('SHAPE')}', ${v(b,'X','86')}, ${v(b,'Y','160')}, ${v(b,'SIZE','64')}, ${v(b,'COLOR','WHITE')})\n`;
+P.forBlock['screen_rect'] = b => `rect(${v(b,'X','0')}, ${v(b,'Y','0')}, ${v(b,'W','10')}, ${v(b,'H','10')}, ${v(b,'COLOR','WHITE')}, ${b.getFieldValue('FULL')==='TRUE'?'True':'False'})\n`;
+P.forBlock['screen_circle'] = b => `circle(${v(b,'X','0')}, ${v(b,'Y','0')}, ${v(b,'R','10')}, ${v(b,'COLOR','WHITE')}, ${b.getFieldValue('FULL')==='TRUE'?'True':'False'})\n`;
+P.forBlock['screen_line'] = b => `line(${v(b,'X1','0')}, ${v(b,'Y1','0')}, ${v(b,'X2','0')}, ${v(b,'Y2','0')}, ${v(b,'COLOR','WHITE')})\n`;
+P.forBlock['screen_pixel'] = b => `pixel(${v(b,'X','0')}, ${v(b,'Y','0')}, ${v(b,'COLOR','WHITE')})\n`;
+P.forBlock['screen_bright'] = b => `brightness(${v(b,'P','100')})\n`;
+P.forBlock['input_button'] = () => ['button()', O.FUNCTION_CALL];
+P.forBlock['input_wait'] = () => 'wait_button()\n';
+P.forBlock['imu_tilt'] = b => [b.getFieldValue('AXIS')==='LR' ? 'tilt_lr()' : 'tilt_fb()', O.FUNCTION_CALL];
+P.forBlock['imu_shaken'] = () => ['shaken()', O.FUNCTION_CALL];
+P.forBlock['time_wait'] = b => `wait(${v(b,'S','1')})\n`;
+P.forBlock['loop_forever'] = (b, g) => 'while True:\n' + (g.statementToCode(b,'DO') || g.INDENT + 'pass\n') + g.INDENT + 'wait(0.01)\n';
+
+/* ---------- toolbox ---------- */
+const toolbox = {kind:'categoryToolbox', contents:[
+  {kind:'category', name:'Screen', colour:C_SCREEN, contents:[
+    {kind:'block', type:'screen_fill', inputs:{COLOR:col('BLACK')}},
+    {kind:'block', type:'screen_text', inputs:{TEXT:txt('Hello!'), X:num(10), Y:num(20), COLOR:col('WHITE')}, fields:{SIZE:'3'}},
+    {kind:'block', type:'screen_shape', fields:{SHAPE:'cat'}, inputs:{X:num(86), Y:num(160), SIZE:num(96), COLOR:col('ORANGE')}},
+    {kind:'block', type:'screen_shape', fields:{SHAPE:'star'}, inputs:{X:num(86), Y:num(160), SIZE:num(80), COLOR:col('YELLOW')}},
+    {kind:'block', type:'screen_circle', inputs:{X:num(86), Y:num(160), R:num(30), COLOR:col('YELLOW')}},
+    {kind:'block', type:'screen_rect', inputs:{X:num(20), Y:num(40), W:num(60), H:num(40), COLOR:col('BLUE')}},
+    {kind:'block', type:'screen_line', inputs:{X1:num(0), Y1:num(0), X2:num(171), Y2:num(319), COLOR:col('RED')}},
+    {kind:'block', type:'screen_pixel', inputs:{X:num(86), Y:num(160), COLOR:col('WHITE')}},
+    {kind:'block', type:'screen_bright', inputs:{P:num(100)}}]},
+  {kind:'category', name:'Colours', colour:C_COLOR, contents:[
+    {kind:'block', type:'color_pick', fields:{C:'RED'}},
+    {kind:'block', type:'color_random'},
+    {kind:'block', type:'color_rgb', inputs:{R:num(255), G:num(120), B:num(0)}}]},
+  {kind:'category', name:'Button & motion', colour:C_INPUT, contents:[
+    {kind:'block', type:'input_wait'},
+    {kind:'block', type:'input_button'},
+    {kind:'block', type:'imu_tilt'},
+    {kind:'block', type:'imu_shaken'}]},
+  {kind:'category', name:'Time & loops', colour:'#5B80A5', contents:[
+    {kind:'block', type:'time_wait', inputs:{S:num(1)}},
+    {kind:'block', type:'loop_forever'},
+    {kind:'block', type:'controls_repeat_ext', inputs:{TIMES:num(10)}},
+    {kind:'block', type:'controls_whileUntil'},
+    {kind:'block', type:'controls_for', inputs:{FROM:num(1), TO:num(10), BY:num(1)}}]},
+  {kind:'category', name:'Logic', categorystyle:'logic_category', contents:[
+    {kind:'block', type:'controls_if'},
+    {kind:'block', type:'controls_if', extraState:{hasElse:true}},
+    {kind:'block', type:'logic_compare'},
+    {kind:'block', type:'logic_operation'},
+    {kind:'block', type:'logic_negate'},
+    {kind:'block', type:'logic_boolean'}]},
+  {kind:'category', name:'Math', categorystyle:'math_category', contents:[
+    {kind:'block', type:'math_number', fields:{NUM:0}},
+    {kind:'block', type:'math_arithmetic', inputs:{A:num(1), B:num(1)}},
+    {kind:'block', type:'math_random_int', inputs:{FROM:num(0), TO:num(171)}},
+    {kind:'block', type:'math_modulo', inputs:{DIVIDEND:num(10), DIVISOR:num(3)}},
+    {kind:'block', type:'math_round'}]},
+  {kind:'category', name:'Text', categorystyle:'text_category', contents:[
+    {kind:'block', type:'text'},
+    {kind:'block', type:'text_join'},
+    {kind:'block', type:'text_print', inputs:{TEXT:txt('hi')}}]},
+  {kind:'category', name:'Variables', categorystyle:'variable_category', custom:'VARIABLE'},
+]};
+
+/* ---------- examples ---------- */
+const S_ = (t, f, inner='') => `<block type="${t}">${f}${inner}</block>`;
+const sNum = (name, n) => `<value name="${name}"><shadow type="math_number"><field name="NUM">${n}</field></shadow></value>`;
+const sCol = (name, c) => `<value name="${name}"><shadow type="color_pick"><field name="C">${c}</field></shadow></value>`;
+const sTxt = (name, t) => `<value name="${name}"><shadow type="text"><field name="TEXT">${t}</field></shadow></value>`;
+const nxt = b => `<next>${b}</next>`;
+const rnd = (name, a, z) => `<value name="${name}"><block type="math_random_int">${sNum('FROM',a)}${sNum('TO',z)}</block></value>`;
+const wrap = (b, x=40, y=40) => `<xml xmlns="https://developers.google.com/blockly/xml">${b.replace('<block ', `<block x="${x}" y="${y}" `)}</xml>`;
+const EXAMPLES = {
+  'Hello world': wrap(
+    S_('screen_fill', sCol('COLOR','BLUE'),
+      nxt(S_('screen_text', `${sTxt('TEXT','Hello!')}${sNum('X',14)}${sNum('Y',120)}<field name="SIZE">3</field>${sCol('COLOR','YELLOW')}`,
+        nxt(S_('screen_circle', `${sNum('X',86)}${sNum('Y',230)}${sNum('R',30)}${sCol('COLOR','WHITE')}<field name="FULL">TRUE</field>`)))))),
+  'Colour bubbles': wrap(
+    S_('loop_forever', `<statement name="DO">${
+      S_('screen_circle', `${rnd('X',0,171)}${rnd('Y',0,319)}${rnd('R',4,28)}<value name="COLOR"><block type="color_random"></block></value><field name="FULL">TRUE</field>`,
+        nxt(S_('time_wait', sNum('S',0.1))))}</statement>`)),
+  'Tilt meter': wrap(
+    S_('screen_fill', sCol('COLOR','BLACK'),
+      nxt(S_('screen_text', `${sTxt('TEXT','TILT')}${sNum('X',38)}${sNum('Y',60)}<field name="SIZE">3</field>${sCol('COLOR','CYAN')}`,
+        nxt(S_('loop_forever', `<statement name="DO">${
+          S_('screen_rect', `${sNum('X',0)}${sNum('Y',130)}${sNum('W',172)}${sNum('H',40)}${sCol('COLOR','BLACK')}<field name="FULL">TRUE</field>`,
+            nxt(S_('screen_text', `<value name="TEXT"><block type="imu_tilt"><field name="AXIS">LR</field></block></value>${sNum('X',40)}${sNum('Y',130)}<field name="SIZE">5</field>${sCol('COLOR','YELLOW')}`,
+              nxt(S_('time_wait', sNum('S',0.2))))))}</statement>`)))))),
+  'Zoo': wrap(
+    S_('screen_fill', sCol('COLOR','CYAN'),
+      nxt(S_('screen_shape', `<field name="SHAPE">dog</field>${sNum('X',46)}${sNum('Y',56)}${sNum('SIZE',64)}${sCol('COLOR','BROWN')}`,
+        nxt(S_('screen_shape', `<field name="SHAPE">cat</field>${sNum('X',126)}${sNum('Y',56)}${sNum('SIZE',64)}${sCol('COLOR','ORANGE')}`,
+          nxt(S_('screen_shape', `<field name="SHAPE">crocodile</field>${sNum('X',86)}${sNum('Y',156)}${sNum('SIZE',128)}${sCol('COLOR','GREEN')}`,
+            nxt(S_('screen_shape', `<field name="SHAPE">star</field>${sNum('X',46)}${sNum('Y',262)}${sNum('SIZE',64)}${sCol('COLOR','YELLOW')}`,
+              nxt(S_('screen_shape', `<field name="SHAPE">heart</field>${sNum('X',126)}${sNum('Y',262)}${sNum('SIZE',60)}${sCol('COLOR','RED')}`)))))))))))),
+  'Magic button': wrap(
+    S_('screen_text', `${sTxt('TEXT','Press BOOT')}${sNum('X',6)}${sNum('Y',150)}<field name="SIZE">2</field>${sCol('COLOR','WHITE')}`,
+      nxt(S_('loop_forever', `<statement name="DO">${
+        S_('input_wait', '',
+          nxt(S_('screen_fill', '<value name="COLOR"><block type="color_random"></block></value>',
+            nxt(S_('screen_text', `${sTxt('TEXT','WOW!')}${sNum('X',38)}${sNum('Y',140)}<field name="SIZE">4</field>${sCol('COLOR','BLACK')}`)))))}</statement>`)))),
+};
+
+/* ---------- workspace ---------- */
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const theme = Blockly.Theme.defineTheme('workbench', {
+  base: Blockly.Themes.Classic,
+  componentStyles: {
+    workspaceBackgroundColour: css('--surface'), toolboxBackgroundColour: css('--sunk'),
+    toolboxForegroundColour: css('--ink'), flyoutBackgroundColour: css('--sunk'),
+    flyoutForegroundColour: css('--ink'), scrollbarColour: css('--line'), insertionMarkerColour: css('--ink')},
+  fontStyle: {family: 'Rubik, Segoe UI, Arial, sans-serif', weight: '500', size: 12},
+});
+const ws = Blockly.inject('blocklyDiv', {
+  toolbox, rtl: false, renderer: 'zelos', theme, trashcan: false, sounds: false,
+  zoom: {controls: false, wheel: true, startScale: 0.8, maxScale: 2, minScale: 0.4},
+  grid: {spacing: 28, length: 2, colour: css('--line'), snap: true},
+});
+function loadXml(xml){ ws.clear(); Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(xml), ws); ws.scrollCenter(); }
+function program(){ return 'from board import *\nfill(BLACK)\n' + P.workspaceToCode(ws); }
+
+let saved = null;
+try { saved = localStorage.getItem('screen-workshop-project'); } catch(e) {}
+try { if (saved) Blockly.serialization.workspaces.load(JSON.parse(saved), ws); else loadXml(EXAMPLES['Hello world']); }
+catch(e) { loadXml(EXAMPLES['Hello world']); }
+
+let tCode;
+ws.addChangeListener(e => {
+  if (e.isUiEvent) return;
+  clearTimeout(tCode);
+  tCode = setTimeout(() => {
+    $('code').textContent = program();
+    try { localStorage.setItem('screen-workshop-project', JSON.stringify(Blockly.serialization.workspaces.save(ws))); } catch(e) {}
+  }, 250);
+});
+$('code').textContent = program();
+
+const exBox = $('examples');
+Object.keys(EXAMPLES).forEach(name => {
+  const b = document.createElement('button'); b.className = 'btn'; b.textContent = name;
+  b.onclick = () => { loadXml(EXAMPLES[name]); log(`Loaded "${name}". Click Run.`, 'ok'); showTab('p-log'); };
+  exBox.appendChild(b);
+});
+
+/* ---------- side tabs ---------- */
+function showTab(id){
+  document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', t.dataset.p === id ? 'true' : 'false'));
+  document.querySelectorAll('.pane').forEach(p => p.hidden = p.id !== id);
+  Blockly.svgResize(ws);
+}
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => showTab(t.dataset.p));
+window.addEventListener('resize', () => Blockly.svgResize(ws));
+
+/* ---------- messages ---------- */
+let outEl = null;
+function log(text, kind='info', detail=''){
+  outEl = null;
+  const d = document.createElement('div'); d.className = 'msg ' + kind; d.textContent = text;
+  if (detail) { const det = document.createElement('details'); det.innerHTML = '<summary>Details for the teacher</summary>';
+    const pre = document.createElement('pre'); pre.textContent = detail; det.appendChild(pre); d.appendChild(det); }
+  $('log').appendChild(d); d.scrollIntoView({block:'end'});
+}
+function out(text){
+  if (!outEl) { outEl = document.createElement('div'); outEl.className = 'msg out'; $('log').appendChild(outEl); }
+  outEl.textContent += text; outEl.scrollIntoView({block:'end'});
+}
+function setStatus(s, text){ $('status').dataset.s = s; $('statusText').textContent = text; }
+function notice(html){ $('notice').innerHTML = html; $('notice').hidden = false; }
+
+function friendly(err){
+  if (/KeyboardInterrupt/.test(err)) return ['The program stopped.', 'info'];
+  if (/ImportError/.test(err) && /board/.test(err)) return ['The screen library is missing from the board. Reload the page and connect again to install it.', 'err'];
+  if (/OSError/.test(err)) return ['The board couldn\'t talk to the screen or sensor. Press RESET on the board and connect again.', 'err'];
+  if (/NameError/.test(err)) return ['You used a variable before giving it a value.', 'err'];
+  if (/ZeroDivisionError/.test(err)) return ['You tried to divide by zero.', 'err'];
+  if (/TypeError/.test(err)) return ['A block got the wrong kind of value, like text where a number should go.', 'err'];
+  if (/SyntaxError/.test(err)) return ['A block isn\'t connected properly. Check that all your blocks snap together.', 'err'];
+  if (/MemoryError/.test(err)) return ['The board ran out of memory. Try smaller text or fewer blocks.', 'err'];
+  return ['Something went wrong in the program.', 'err'];
+}
+
+/* ---------- serial link ---------- */
+const S = {port:null, reader:null, writer:null, rx:'', stream:null, busy:false};
+const enc = new TextEncoder();
+const hasSerial = 'serial' in navigator;
+if (!hasSerial) notice('Connecting to the board works in <b>Chrome</b> or <b>Edge</b> on a computer. In this browser you can build programs and see the code, but not run them on the board.');
+
+async function write(s){ await S.writer.write(enc.encode(s)); }
+function onText(t){
+  if (!S.stream) { S.rx += t; if (S.rx.length > 40000) S.rx = S.rx.slice(-20000); if (S.passthrough) out(t.replace(/\r/g,'')); return; }
+  for (const ch of t) {
+    const st = S.stream; if (!st) { S.rx += ch; continue; }
+    if (st.phase === 'ok') { st.buf += ch; if (st.buf.endsWith('OK')) st.phase = 'out'; }
+    else if (st.phase === 'out') { if (ch === '\x04') st.phase = 'err'; else if (ch !== '\r') out(ch); }
+    else if (st.phase === 'err') { if (ch === '\x04') { st.phase = 'end'; finishRun(st.err); } else st.err += ch; }
+    else if (st.phase === 'end') { if (ch === '>') S.stream = null; }
+  }
+}
+function waitFor(token, ms=4000){
+  return new Promise((res, rej) => {
+    const t0 = Date.now();
+    (function poll(){
+      const i = S.rx.indexOf(token);
+      if (i >= 0) { const before = S.rx.slice(0, i); S.rx = S.rx.slice(i + token.length); res(before); }
+      else if (Date.now() - t0 > ms) rej(new Error('timeout ' + JSON.stringify(token)));
+      else setTimeout(poll, 15);
+    })();
+  });
+}
+async function readLoop(){
+  const dec = new TextDecoder();
+  while (S.port && S.port.readable) {
+    S.reader = S.port.readable.getReader();
+    try { for (;;) { const {value, done} = await S.reader.read(); if (done) break; onText(dec.decode(value, {stream:true})); } }
+    catch(e) { break; }
+    finally { try { S.reader.releaseLock(); } catch(e) {} }
+  }
+  lost();
+}
+function lost(){
+  if (!S.port) return;
+  S.port = null; S.writer = null; S.stream = null;
+  setStatus('off', 'Not connected'); $('btnConnect').querySelector('span').textContent = 'Connect board';
+  log('The board was disconnected.', 'info');
+}
+async function sendChunks(code){
+  const bytes = enc.encode(code);
+  for (let i = 0; i < bytes.length; i += 256) { await S.writer.write(bytes.slice(i, i + 256)); await sleep(8); }
+}
+async function enterRaw(){
+  S.stream = null; S.passthrough = false;
+  await write('\r\x03\x03'); await sleep(120); S.rx = '';
+  await write('\x01');
+  await waitFor('raw REPL; CTRL-B to exit\r\n>', 3000);
+}
+async function execRaw(code, ms=8000){
+  S.rx = '';
+  await sendChunks(code); await write('\x04');
+  await waitFor('OK', 3000);
+  const o = await waitFor('\x04', ms);
+  const e = await waitFor('\x04', 3000);
+  await waitFor('>', 2000);
+  return {out:o, err:e};
+}
+async function uploadFile(name, content){
+  let r = await execRaw(`f=open('${name}','w')\nf.close()`);
+  if (r.err) throw new Error(r.err);
+  for (let i = 0; i < content.length; i += 400) {
+    r = await execRaw(`f=open('${name}','a')\nf.write(${JSON.stringify(content.slice(i, i + 400))})\nf.close()`);
+    if (r.err) throw new Error(r.err);
+  }
+}
+async function ensureLibrary(){
+  const r = await execRaw("try:\n f=open('board.py')\n print(f.readline().strip())\n f.close()\nexcept OSError:\n print('none')\n");
+  if (r.out.includes(BOARD_TAG)) return;
+  setStatus('busy', 'Installing screen library…');
+  log('Installing the screen library on the board. This takes a few seconds and only happens once.');
+  await uploadFile('board.py', BOARD_PY);
+  log('Screen library installed.', 'ok');
+}
+
+async function connect(){
+  if (S.port) { await disconnect(); return; }
+  if (!hasSerial) { showTab('p-log'); log('This browser can\'t connect to the board. Open the app in Chrome or Edge on a computer.', 'err'); return; }
+  let port;
+  try { port = await navigator.serial.requestPort(); }
+  catch(e) {
+    if (e.name === 'SecurityError') notice('The browser blocks board connections in this view. Open the app file directly in Chrome or Edge.');
+    return;
+  }
+  try { await port.open({baudRate:115200}); }
+  catch(e) { log('Couldn\'t open the board. Another window may be using it. Close that window and try again.', 'err', String(e)); return; }
+  S.port = port; S.writer = port.writable.getWriter(); readLoop();
+  $('btnConnect').querySelector('span').textContent = 'Disconnect';
+  setStatus('busy', 'Connecting…');
+  try {
+    await enterRaw();
+    await ensureLibrary();
+    setStatus('on', 'Connected');
+    log('Board connected. Click Run!', 'ok');
+  } catch(e) {
+    setStatus('on', 'Connected, no MicroPython');
+    log('The board is connected but not answering. It probably doesn\'t have MicroPython yet: click "First-time setup".', 'err', String(e && e.message || e));
+  }
+}
+async function disconnect(){
+  const p = S.port; S.port = null; S.stream = null;
+  try { await S.reader?.cancel(); } catch(e) {}
+  try { S.writer?.releaseLock(); } catch(e) {}
+  try { await p?.close(); } catch(e) {}
+  setStatus('off', 'Not connected'); $('btnConnect').querySelector('span').textContent = 'Connect board';
+}
+navigator.serial?.addEventListener?.('disconnect', e => { if (e.target === S.port) lost(); });
+
+async function needBoard(){
+  if (S.port) return true;
+  await connect();
+  return !!S.port && $('status').dataset.s === 'on' && $('statusText').textContent === 'Connected';
+}
+function finishRun(err){
+  if (err && err.trim()) { const [m, k] = friendly(err); log(m, k, k === 'err' ? err.trim() : ''); }
+  else log('The program finished.', 'ok');
+  setStatus('on', 'Connected');
+}
+async function run(){
+  if (S.busy) return;
+  showTab('p-log');
+  if (!(await needBoard())) return;
+  S.busy = true;
+  try {
+    await enterRaw();
+    S.rx = ''; await sendChunks(program()); await write('\x04');
+    S.stream = {phase:'ok', buf:'', err:''};
+    setStatus('run', 'Running on board');
+    log('Your program is running on the board.', 'info');
+  } catch(e) { log('Couldn\'t send the program. Click Stop and try again.', 'err', String(e && e.message || e)); setStatus('on', 'Connected'); }
+  S.busy = false;
+}
+async function stop(){
+  if (!S.port) return;
+  await write('\x03\x03');
+  if (!S.stream) { setStatus('on', 'Connected'); log('Stopped.', 'info'); }
+}
+async function saveToBoard(){
+  if (S.busy) return;
+  showTab('p-log');
+  if (!(await needBoard())) return;
+  S.busy = true;
+  try {
+    setStatus('busy', 'Saving to board…');
+    await enterRaw();
+    await uploadFile('main.py', program());
+    await write('\x02'); await sleep(150);
+    S.rx = ''; S.passthrough = true;
+    await write('\x04');
+    setStatus('run', 'Running on board');
+    log('Saved! Your program is running now and will run every time the board turns on.', 'ok');
+  } catch(e) { log('Saving failed. Click Stop and try again.', 'err', String(e && e.message || e)); setStatus('on', 'Connected'); }
+  S.busy = false;
+}
+
+/* ---------- first-time firmware install ---------- */
+function flog(t){ const el = $('flashLog'); el.textContent += t + '\n'; el.scrollTop = el.scrollHeight; }
+async function flash(){
+  const f = $('fwFile').files[0];
+  if (!f) { flog('Choose a .bin file first.'); return; }
+  if (!hasSerial) { flog('You need Chrome or Edge on a computer.'); return; }
+  if (S.port) await disconnect();
+  const btn = $('btnDoFlash'); btn.disabled = true; $('flashBar').style.width = '0';
+  let transport;
+  try {
+    const buf = new Uint8Array(await f.arrayBuffer());
+    let bin = ''; for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 8192));
+    flog('Loading the install tool…');
+    let mod = null;
+    for (const cdn of CDNS) { try { mod = await import(cdn + 'esptool-js@0.4.5/bundle.js'); break; } catch(e) {} }
+    if (!mod) throw new Error('Couldn\'t load the install tool. Check your internet connection.');
+    const {ESPLoader, Transport} = mod;
+    const port = await navigator.serial.requestPort();
+    transport = new Transport(port, false);
+    const loader = new ESPLoader({transport, baudrate:460800, romBaudrate:115200,
+      terminal:{clean(){}, writeLine:t => flog(t), write:t => {}}});
+    const chip = await loader.main();
+    flog('Found: ' + chip);
+    await loader.writeFlash({fileArray:[{data:bin, address:0}], flashSize:'keep', flashMode:'keep', flashFreq:'keep',
+      eraseAll:true, compress:true, reportProgress:(i, w, t) => { $('flashBar').style.width = Math.round(w / t * 100) + '%'; }});
+    await loader.hardReset();
+    flog('Done! Close this window and click "Connect board".');
+    $('flashBar').style.width = '100%';
+  } catch(e) {
+    if (e && e.name === 'SecurityError') flog('The browser blocks board connections in this view. Open the app file directly in Chrome.');
+    else if (e && e.name === 'NotFoundError') flog('No board was chosen.');
+    else flog('Install failed: ' + (e && e.message || e) + '\nTry this: unplug the board, hold BOOT, plug it back in, let go, then click "Install" again.');
+  }
+  try { await transport?.disconnect(); } catch(e) {}
+  btn.disabled = false;
+}
+
+/* ---------- project files ---------- */
+$('btnExport').onclick = () => {
+  const data = JSON.stringify(Blockly.serialization.workspaces.save(ws));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], {type:'application/json'}));
+  a.download = 'my-screen-project.json'; a.click();
+};
+$('importFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { ws.clear(); Blockly.serialization.workspaces.load(JSON.parse(await f.text()), ws); log('Project opened.', 'ok'); }
+  catch(err) { log('Couldn\'t open that file. Choose a project file saved from this app.', 'err'); }
+  e.target.value = '';
+};
+let newArmed = false;
+$('btnNew').onclick = () => {
+  if (!newArmed) { newArmed = true; $('btnNew').textContent = 'Sure? Click again'; setTimeout(() => { newArmed = false; $('btnNew').textContent = 'Start over'; }, 3000); return; }
+  newArmed = false; $('btnNew').textContent = 'Start over'; ws.clear();
+};
+
+/* ---------- wire up ---------- */
+$('btnConnect').onclick = connect;
+$('btnRun').onclick = run;
+$('btnStop').onclick = stop;
+$('btnSave').onclick = saveToBoard;
+$('btnFlash').onclick = () => { $('flashSheet').hidden = false; };
+$('btnCloseFlash').onclick = () => { $('flashSheet').hidden = true; };
+$('btnDoFlash').onclick = flash;
+log('Welcome! Drag blocks from the menu, connect the board and click Run. With a new board, click "First-time setup" first.');
+}
+</script>
