@@ -933,6 +933,9 @@ P.forBlock['input_button'] = () => ['button()', O.FUNCTION_CALL];
 P.forBlock['input_wait'] = () => 'wait_button()\n';
 P.forBlock['imu_tilt'] = b => [b.getFieldValue('AXIS')==='LR' ? 'tilt_lr()' : 'tilt_fb()', O.FUNCTION_CALL];
 P.forBlock['imu_shaken'] = () => ['shaken()', O.FUNCTION_CALL];
+/* Blockly's own "change by" imports the numbers module, which MicroPython doesn't have. */
+P.forBlock['math_change'] = (b, g) => { const n = g.getVariableName(b.getFieldValue('VAR'));
+  return `${n} = (${n} if isinstance(${n}, (int, float)) else 0) + ${v(b,'DELTA','0')}\n`; };
 P.forBlock['time_wait'] = b => `wait(${v(b,'S','1')})\n`;
 P.forBlock['loop_forever'] = (b, g) => 'while True:\n' + (g.statementToCode(b,'DO') || g.INDENT + 'pass\n') + g.INDENT + 'wait(0.01)\n';
 
