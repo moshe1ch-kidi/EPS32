@@ -133,6 +133,8 @@ input[type=file]{font:inherit;max-width:100%}
           <li>The screen shows English letters, numbers and symbols.</li>
           <li>The <b>BOOT</b> button on the board also works as a button for your programs.</li>
           <li>Tilt is measured in degrees, from about -90 to 90.</li>
+          <li><b>Pins</b> 0, 1 and 10 are on the side headers. They work with 3.3 V only. Never connect 5 V to them, and always put a resistor in front of an LED.</li>
+          <li>The <b>SD card</b> must be formatted as FAT32. Files you write can be opened on a computer.</li>
           <li>If the board stops responding: click <b>Stop</b>. If that doesn't help, press RESET on the board and connect again.</li>
         </ul>
         <h3>My project</h3>
@@ -166,11 +168,11 @@ input[type=file]{font:inherit;max-width:100%}
 </div>
 
 <script type="text/plain" id="boardpy">
-# board v2 - ESP32-C3-LCD-1.47 helper for Blockly kids
-from machine import Pin, SPI, I2C
+# board v3 - ESP32-C3-LCD-1.47 helper for Blockly kids
+from machine import Pin, SPI, I2C, ADC, PWM
 import framebuf, time, math, random
 
-VERSION = 2
+VERSION = 3
 W = 172
 H = 320
 _XO = 34
@@ -455,8 +457,8 @@ except OSError:
     pass
 
 
-def _raw():
-    b = _i2c.readfrom_mem(0x6B, 0x35, 6)
+def _raw(reg=0x35, scale=4096):
+    b = _i2c.readfrom_mem(0x6B, reg, 6)
     out = []
     for i in range(3):
         if _big:
@@ -465,7 +467,7 @@ def _raw():
             v = b[2 * i] | (b[2 * i + 1] << 8)
         if v > 32767:
             v -= 65536
-        out.append(v / 4096)
+        out.append(v / scale)
     return out
 
 
@@ -505,6 +507,181 @@ def tilt_fb():
 def shaken():
     a = accel()
     return math.sqrt(a[0] ** 2 + a[1] ** 2 + a[2] ** 2) > 1.6
+
+
+def gyro(axis="z"):
+    # rotation speed in degrees per second (range +-512)
+    if not _imu:
+        return 0
+    try:
+        g = _raw(0x3B, 64)
+    except OSError:
+        return 0
+    return round(g["xyz".index(axis)])
+
+
+def temperature():
+    # degrees C from the motion chip (a little warmer than the room)
+    if not _imu:
+        return 0
+    try:
+        lo, hi = _i2c.readfrom_mem(0x6B, 0x33, 2)
+    except OSError:
+        return 0
+    if hi > 127:
+        hi -= 256
+    return round(hi + lo / 256, 1)
+
+
+# --- SD card (shares the screen's SPI wires; SD CS = expander bit 2)
+_sd = None
+
+
+class _SDCS:
+    OUT = 1
+
+    def init(self, *a, **k):
+        _pin(2, 1)
+
+    def __call__(self, v):
+        _pin(2, v)
+
+
+class _SDSPI:
+    def init(self, baudrate=400000, **k):
+        _spi.init(baudrate=min(int(baudrate), 10000000), polarity=0, phase=0, sck=Pin(7), mosi=Pin(5), miso=Pin(6))
+
+    def write(self, b):
+        _spi.write(b)
+
+    def read(self, n, v=0xFF):
+        return _spi.read(n, v)
+
+    def readinto(self, b, v=0xFF):
+        _spi.readinto(b, v)
+
+    def write_readinto(self, a, b):
+        _spi.write_readinto(a, b)
+
+
+def _sd_begin():
+    global _io
+    _io |= 0x05  # deselect screen and card
+    _ex(3, _io)
+    _spi.init(baudrate=10000000, polarity=0, phase=0, sck=Pin(7), mosi=Pin(5), miso=Pin(6))
+
+
+def _sd_end():
+    global _io
+    _io = (_io | 0x04) & 0xFE  # card off, screen back on
+    _ex(3, _io)
+    _spi.init(baudrate=40000000, polarity=0, phase=0, sck=Pin(7), mosi=Pin(5), miso=Pin(6))
+
+
+def _sd_mount():
+    global _sd
+    if _sd:
+        return
+    import os
+    try:
+        os.listdir("/sd")
+        _sd = True
+        return
+    except OSError:
+        pass
+    try:
+        import sdcard
+        card = sdcard.SDCard(_SDSPI(), _SDCS(), baudrate=10000000)
+        os.mount(os.VfsFat(card), "/sd")
+        _sd = True
+    except Exception:
+        raise OSError("NO_SD_CARD")
+
+
+def _sd_name(name):
+    name = str(name).strip().replace("/", "_") or "data"
+    if "." not in name:
+        name += ".txt"
+    return "/sd/" + name
+
+
+def sd_append(name, line):
+    _sd_begin()
+    try:
+        _sd_mount()
+        with open(_sd_name(name), "a") as f:
+            f.write(str(line) + "\n")
+    finally:
+        _sd_end()
+
+
+def sd_read(name):
+    _sd_begin()
+    try:
+        _sd_mount()
+        try:
+            with open(_sd_name(name)) as f:
+                return f.read().rstrip("\n")
+        except OSError:
+            raise OSError("NO_SUCH_FILE")
+    finally:
+        _sd_end()
+
+
+def sd_delete(name):
+    import os
+    _sd_begin()
+    try:
+        _sd_mount()
+        try:
+            os.remove(_sd_name(name))
+        except OSError:
+            pass
+    finally:
+        _sd_end()
+
+
+# --- side pins (GPIO 0, 1, 10)
+_pins = {}
+
+
+def _gpio(p, mode):
+    p = int(p)
+    key = (p, mode)
+    if key not in _pins:
+        for k in [k for k in _pins if k[0] == p]:
+            del _pins[k]
+        if mode == "out":
+            _pins[key] = Pin(p, Pin.OUT)
+        elif mode == "in":
+            _pins[key] = Pin(p, Pin.IN, Pin.PULL_DOWN)
+        else:
+            _pins[key] = ADC(Pin(p), atten=ADC.ATTN_11DB)
+    return _pins[key]
+
+
+def pin_write(p, on):
+    _gpio(p, "out").value(1 if on else 0)
+
+
+def pin_read(p):
+    return _gpio(p, "in").value() == 1
+
+
+def analog(p):
+    return round(_gpio(p, "adc").read_u16() * 100 / 65535)
+
+
+def tone(p, freq, sec):
+    p = int(p)
+    for k in [k for k in _pins if k[0] == p]:
+        del _pins[k]
+    pwm = PWM(Pin(p), freq=max(20, int(freq)), duty_u16=32768)
+    try:
+        time.sleep(sec)
+    finally:
+        pwm.deinit()
+        Pin(p, Pin.OUT, value=0)
 
 
 def wait(sec):
@@ -775,6 +952,324 @@ def shape(name, cx, cy, size=64, c=WHITE):
 brightness(100)
 fill(BLACK)
 </script>
+<script type="text/plain" id="sdcardpy">
+# sdcard.py from micropython-lib (MIT License, (c) MicroPython contributors)
+"""
+MicroPython driver for SD cards using SPI bus.
+
+Requires an SPI bus and a CS pin.  Provides readblocks and writeblocks
+methods so the device can be mounted as a filesystem.
+
+Example usage on pyboard:
+
+    import pyb, sdcard, os
+    sd = sdcard.SDCard(pyb.SPI(1), pyb.Pin.board.X5)
+    pyb.mount(sd, '/sd2')
+    os.listdir('/')
+
+Example usage on ESP8266:
+
+    import machine, sdcard, os
+    sd = sdcard.SDCard(machine.SPI(1), machine.Pin(15))
+    os.mount(sd, '/sd')
+    os.listdir('/')
+
+"""
+
+from micropython import const
+import time
+
+
+_CMD_TIMEOUT = const(100)
+
+_R1_IDLE_STATE = const(1 << 0)
+# R1_ERASE_RESET = const(1 << 1)
+_R1_ILLEGAL_COMMAND = const(1 << 2)
+# R1_COM_CRC_ERROR = const(1 << 3)
+# R1_ERASE_SEQUENCE_ERROR = const(1 << 4)
+# R1_ADDRESS_ERROR = const(1 << 5)
+# R1_PARAMETER_ERROR = const(1 << 6)
+_TOKEN_CMD25 = const(0xFC)
+_TOKEN_STOP_TRAN = const(0xFD)
+_TOKEN_DATA = const(0xFE)
+
+
+def _crc7(buf, n):
+    crc = 0
+    for i in range(n):
+        crc ^= buf[i]
+        for j in range(8):
+            crc = ((crc << 1) ^ (0x12 * (crc >> 7))) & 0xFF
+    return crc
+
+
+class SDCard:
+    def __init__(self, spi, cs, baudrate=1320000):
+        self.spi = spi
+        self.cs = cs
+
+        self.cmdbuf = bytearray(6)
+        self.dummybuf = bytearray(512)
+        self.tokenbuf = bytearray(1)
+        for i in range(512):
+            self.dummybuf[i] = 0xFF
+        self.dummybuf_memoryview = memoryview(self.dummybuf)
+
+        # initialise the card
+        self.init_card(baudrate)
+
+    def init_spi(self, baudrate):
+        try:
+            master = self.spi.MASTER
+        except AttributeError:
+            # on ESP8266
+            self.spi.init(baudrate=baudrate, phase=0, polarity=0)
+        else:
+            # on pyboard
+            self.spi.init(master, baudrate=baudrate, phase=0, polarity=0)
+
+    def init_card(self, baudrate):
+        # init CS pin
+        self.cs.init(self.cs.OUT, value=1)
+
+        # init SPI bus; use low data rate for initialisation
+        self.init_spi(100000)
+
+        # clock card at least 100 cycles with cs high
+        for i in range(16):
+            self.spi.write(b"\xff")
+
+        # CMD0: init card; should return _R1_IDLE_STATE (allow 5 attempts)
+        for _ in range(5):
+            if self.cmd(0, 0) == _R1_IDLE_STATE:
+                break
+        else:
+            raise OSError("no SD card")
+
+        # CMD8: determine card version
+        r = self.cmd(8, 0x01AA, 4)
+        if r == _R1_IDLE_STATE:
+            self.init_card_v2()
+        elif r == (_R1_IDLE_STATE | _R1_ILLEGAL_COMMAND):
+            self.init_card_v1()
+        else:
+            raise OSError("couldn't determine SD card version")
+
+        # get the number of sectors
+        # CMD9: response R2 (R1 byte + 16-byte block read)
+        if self.cmd(9, 0, 0, False) != 0:
+            raise OSError("no response from SD card")
+        csd = bytearray(16)
+        self.readinto(csd)
+        if csd[0] & 0xC0 == 0x40:  # CSD version 2.0
+            self.sectors = ((csd[7] << 16 | csd[8] << 8 | csd[9]) + 1) * 1024
+        elif csd[0] & 0xC0 == 0x00:  # CSD version 1.0 (old, <=2GB)
+            c_size = (csd[6] & 0b11) << 10 | csd[7] << 2 | csd[8] >> 6
+            c_size_mult = (csd[9] & 0b11) << 1 | csd[10] >> 7
+            read_bl_len = csd[5] & 0b1111
+            capacity = (c_size + 1) * (2 ** (c_size_mult + 2)) * (2**read_bl_len)
+            self.sectors = capacity // 512
+        else:
+            raise OSError("SD card CSD format not supported")
+        # print('sectors', self.sectors)
+
+        # CMD16: set block length to 512 bytes
+        if self.cmd(16, 512) != 0:
+            raise OSError("can't set 512 block size")
+
+        # set to high data rate now that it's initialised
+        self.init_spi(baudrate)
+
+    def init_card_v1(self):
+        for i in range(_CMD_TIMEOUT):
+            time.sleep_ms(50)
+            self.cmd(55, 0)
+            if self.cmd(41, 0) == 0:
+                # SDSC card, uses byte addressing in read/write/erase commands
+                self.cdv = 512
+                # print("[SDCard] v1 card")
+                return
+        raise OSError("timeout waiting for v1 card")
+
+    def init_card_v2(self):
+        for i in range(_CMD_TIMEOUT):
+            time.sleep_ms(50)
+            self.cmd(58, 0, 4)
+            self.cmd(55, 0)
+            if self.cmd(41, 0x40000000) == 0:
+                self.cmd(58, 0, -4)  # 4-byte response, negative means keep the first byte
+                ocr = self.tokenbuf[0]  # get first byte of response, which is OCR
+                if not ocr & 0x40:
+                    # SDSC card, uses byte addressing in read/write/erase commands
+                    self.cdv = 512
+                else:
+                    # SDHC/SDXC card, uses block addressing in read/write/erase commands
+                    self.cdv = 1
+                # print("[SDCard] v2 card")
+                return
+        raise OSError("timeout waiting for v2 card")
+
+    def cmd(self, cmd, arg, final=0, release=True, skip1=False):
+        self.cs(0)
+
+        # create and send the command
+        buf = self.cmdbuf
+        buf[0] = 0x40 | cmd
+        buf[1] = arg >> 24
+        buf[2] = arg >> 16
+        buf[3] = arg >> 8
+        buf[4] = arg
+        buf[5] = _crc7(buf, 5) | 0x01  # ensure stop bit is always set
+        self.spi.write(buf)
+
+        if skip1:
+            self.spi.readinto(self.tokenbuf, 0xFF)
+
+        # wait for the response (response[7] == 0)
+        for i in range(_CMD_TIMEOUT):
+            self.spi.readinto(self.tokenbuf, 0xFF)
+            response = self.tokenbuf[0]
+            if not (response & 0x80):
+                # this could be a big-endian integer that we are getting here
+                # if final<0 then store the first byte to tokenbuf and discard the rest
+                if final < 0:
+                    self.spi.readinto(self.tokenbuf, 0xFF)
+                    final = -1 - final
+                for j in range(final):
+                    self.spi.write(b"\xff")
+                if release:
+                    self.cs(1)
+                    self.spi.write(b"\xff")
+                return response
+
+        # timeout
+        self.cs(1)
+        self.spi.write(b"\xff")
+        return -1
+
+    def readinto(self, buf):
+        self.cs(0)
+
+        # read until start byte (0xff)
+        for i in range(_CMD_TIMEOUT):
+            self.spi.readinto(self.tokenbuf, 0xFF)
+            if self.tokenbuf[0] == _TOKEN_DATA:
+                break
+            time.sleep_ms(1)
+        else:
+            self.cs(1)
+            raise OSError("timeout waiting for response")
+
+        # read data
+        mv = self.dummybuf_memoryview
+        if len(buf) != len(mv):
+            mv = mv[: len(buf)]
+        self.spi.write_readinto(mv, buf)
+
+        # read checksum
+        self.spi.write(b"\xff")
+        self.spi.write(b"\xff")
+
+        self.cs(1)
+        self.spi.write(b"\xff")
+
+    def write(self, token, buf):
+        self.cs(0)
+
+        # send: start of block, data, checksum
+        self.spi.read(1, token)
+        self.spi.write(buf)
+        self.spi.write(b"\xff")
+        self.spi.write(b"\xff")
+
+        # check the response
+        if (self.spi.read(1, 0xFF)[0] & 0x1F) != 0x05:
+            self.cs(1)
+            self.spi.write(b"\xff")
+            return
+
+        # wait for write to finish
+        while self.spi.read(1, 0xFF)[0] == 0:
+            pass
+
+        self.cs(1)
+        self.spi.write(b"\xff")
+
+    def write_token(self, token):
+        self.cs(0)
+        self.spi.read(1, token)
+        self.spi.write(b"\xff")
+        # wait for write to finish
+        while self.spi.read(1, 0xFF)[0] == 0x00:
+            pass
+
+        self.cs(1)
+        self.spi.write(b"\xff")
+
+    def readblocks(self, block_num, buf):
+        # workaround for shared bus, required for (at least) some Kingston
+        # devices, ensure MOSI is high before starting transaction
+        self.spi.write(b"\xff")
+
+        nblocks = len(buf) // 512
+        assert nblocks and not len(buf) % 512, "Buffer length is invalid"
+        if nblocks == 1:
+            # CMD17: set read address for single block
+            if self.cmd(17, block_num * self.cdv, release=False) != 0:
+                # release the card
+                self.cs(1)
+                raise OSError(5)  # EIO
+            # receive the data and release card
+            self.readinto(buf)
+        else:
+            # CMD18: set read address for multiple blocks
+            if self.cmd(18, block_num * self.cdv, release=False) != 0:
+                # release the card
+                self.cs(1)
+                raise OSError(5)  # EIO
+            offset = 0
+            mv = memoryview(buf)
+            while nblocks:
+                # receive the data and release card
+                self.readinto(mv[offset : offset + 512])
+                offset += 512
+                nblocks -= 1
+            if self.cmd(12, 0, skip1=True):
+                raise OSError(5)  # EIO
+
+    def writeblocks(self, block_num, buf):
+        # workaround for shared bus, required for (at least) some Kingston
+        # devices, ensure MOSI is high before starting transaction
+        self.spi.write(b"\xff")
+
+        nblocks, err = divmod(len(buf), 512)
+        assert nblocks and not err, "Buffer length is invalid"
+        if nblocks == 1:
+            # CMD24: set write address for single block
+            if self.cmd(24, block_num * self.cdv) != 0:
+                raise OSError(5)  # EIO
+
+            # send the data
+            self.write(_TOKEN_DATA, buf)
+        else:
+            # CMD25: set write address for first block
+            if self.cmd(25, block_num * self.cdv) != 0:
+                raise OSError(5)  # EIO
+            # send the data
+            offset = 0
+            mv = memoryview(buf)
+            while nblocks:
+                self.write(_TOKEN_CMD25, mv[offset : offset + 512])
+                offset += 512
+                nblocks -= 1
+            self.write_token(_TOKEN_STOP_TRAN)
+
+    def ioctl(self, op, arg):
+        if op == 4:  # get number of blocks
+            return self.sectors
+        if op == 5:  # get block size in bytes
+            return 512
+</script>
 <script>
 document.documentElement.lang = 'en';
 document.documentElement.dir = 'ltr';
@@ -807,7 +1302,8 @@ loadBlockly().then(ok => { if (ok) start(); else showLoadError(); });
 
 function start(){
 const BOARD_PY = document.getElementById('boardpy').textContent.replace(/^\n/, '');
-const BOARD_TAG = '# board v2';
+const BOARD_TAG = '# board v3';
+const SDCARD_PY = document.getElementById('sdcardpy').textContent.replace(/^\n/, '');
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -857,7 +1353,8 @@ function shapeIcon(name){
 }
 
 /* ---------- blocks ---------- */
-const C_SCREEN = '#0F7B6C', C_COLOR = '#C2410C', C_INPUT = '#7C3AED', C_TIME = '#B45309';
+const C_SCREEN = '#0F7B6C', C_COLOR = '#C2410C', C_INPUT = '#7C3AED', C_TIME = '#B45309', C_SD = '#1D4ED8', C_PINS = '#475569';
+const PINS_IO = [['0','0'],['1','1'],['10','10']], PINS_ADC = [['0','0'],['1','1']];
 const num = n => ({shadow:{type:'math_number', fields:{NUM:n}}});
 const col = c => ({shadow:{type:'color_pick', fields:{C:c}}});
 const txt = t => ({shadow:{type:'text', fields:{TEXT:t}}});
@@ -908,6 +1405,23 @@ Blockly.common.defineBlocksWithJsonArray([
   {type:'imu_tilt', message0:'tilt %1 (degrees)', args0:[{type:'field_dropdown', name:'AXIS', options:[['left-right','LR'],['forward-back','FB']]}],
     output:'Number', colour:C_INPUT, tooltip:'How far the board is tilted, from about -90 to 90'},
   {type:'imu_shaken', message0:'board shaken?', output:'Boolean', colour:C_INPUT, tooltip:'True when you shake the board hard'},
+  {type:'imu_gyro', message0:'rotation speed %1 (degrees per second)', args0:[{type:'field_dropdown', name:'AXIS', options:[['around z (spin flat)','z'],['around x','x'],['around y','y']]}],
+    output:'Number', colour:C_INPUT, tooltip:'How fast the board is turning. 0 when it is still'},
+  {type:'imu_temp', message0:'temperature °C', output:'Number', colour:C_INPUT, tooltip:'Temperature from the motion chip. It reads a little warmer than the room'},
+  {type:'sd_append', message0:'SD card: add line %1 to file %2', args0:[{type:'input_value', name:'TEXT'},{type:'input_value', name:'FILE'}],
+    inputsInline:true, previousStatement:null, nextStatement:null, colour:C_SD, tooltip:'Adds one line to the end of a file on the SD card'},
+  {type:'sd_read', message0:'SD card: read file %1', args0:[{type:'input_value', name:'FILE'}],
+    inputsInline:true, output:'String', colour:C_SD, tooltip:'Everything written in the file, as text'},
+  {type:'sd_delete', message0:'SD card: delete file %1', args0:[{type:'input_value', name:'FILE'}],
+    inputsInline:true, previousStatement:null, nextStatement:null, colour:C_SD, tooltip:'Removes the file so you can start fresh'},
+  {type:'pin_write', message0:'set pin %1 %2', args0:[{type:'field_dropdown', name:'PIN', options:PINS_IO},{type:'field_dropdown', name:'ON', options:[['on','1'],['off','0']]}],
+    previousStatement:null, nextStatement:null, colour:C_PINS, tooltip:'Turns a side pin on (3.3 V) or off. Good for an LED with a resistor'},
+  {type:'pin_read', message0:'pin %1 is on?', args0:[{type:'field_dropdown', name:'PIN', options:PINS_IO}],
+    output:'Boolean', colour:C_PINS, tooltip:'True when the pin gets 3.3 V, for example from a button wired to 3V3'},
+  {type:'pin_analog', message0:'analog pin %1 (0 to 100)', args0:[{type:'field_dropdown', name:'PIN', options:PINS_ADC}],
+    output:'Number', colour:C_PINS, tooltip:'Reads a sensor like a light sensor or knob. 0 = 0 V, 100 = 3.3 V'},
+  {type:'pin_tone', message0:'play tone %1 Hz for %2 seconds on pin %3', args0:[{type:'input_value', name:'FREQ', check:'Number'},{type:'input_value', name:'SEC', check:'Number'},{type:'field_dropdown', name:'PIN', options:PINS_IO}],
+    inputsInline:true, previousStatement:null, nextStatement:null, colour:C_PINS, tooltip:'Makes a sound on a buzzer connected to the pin'},
   {type:'time_wait', message0:'wait %1 seconds', args0:[{type:'input_value', name:'S', check:'Number'}],
     inputsInline:true, previousStatement:null, nextStatement:null, colour:C_TIME, tooltip:'Pauses before the next block'},
   {type:'loop_forever', message0:'repeat forever', message1:'%1', args1:[{type:'input_statement', name:'DO'}],
@@ -916,7 +1430,7 @@ Blockly.common.defineBlocksWithJsonArray([
 
 /* ---------- python ---------- */
 const P = python.pythonGenerator, O = python.Order;
-P.addReservedWords('shape,fill,text,rect,circle,line,pixel,box,brightness,rgb,random_color,button,wait_button,tilt_lr,tilt_fb,shaken,wait,millis,accel,W,H');
+P.addReservedWords('gyro,temperature,sd_append,sd_read,sd_delete,pin_write,pin_read,analog,tone,shape,fill,text,rect,circle,line,pixel,box,brightness,rgb,random_color,button,wait_button,tilt_lr,tilt_fb,shaken,wait,millis,accel,W,H');
 const v = (b, n, d) => P.valueToCode(b, n, O.NONE) || d;
 P.forBlock['color_pick'] = b => [b.getFieldValue('C'), O.ATOMIC];
 P.forBlock['color_rgb'] = b => [`rgb(${v(b,'R','0')}, ${v(b,'G','0')}, ${v(b,'B','0')})`, O.FUNCTION_CALL];
@@ -936,6 +1450,15 @@ P.forBlock['imu_shaken'] = () => ['shaken()', O.FUNCTION_CALL];
 /* Blockly's own "change by" imports the numbers module, which MicroPython doesn't have. */
 P.forBlock['math_change'] = (b, g) => { const n = g.getVariableName(b.getFieldValue('VAR'));
   return `${n} = (${n} if isinstance(${n}, (int, float)) else 0) + ${v(b,'DELTA','0')}\n`; };
+P.forBlock['imu_gyro'] = b => [`gyro('${b.getFieldValue('AXIS')}')`, O.FUNCTION_CALL];
+P.forBlock['imu_temp'] = () => ['temperature()', O.FUNCTION_CALL];
+P.forBlock['sd_append'] = b => `sd_append(${v(b,'FILE',"'data.txt'")}, ${v(b,'TEXT',"''")})\n`;
+P.forBlock['sd_read'] = b => [`sd_read(${v(b,'FILE',"'data.txt'")})`, O.FUNCTION_CALL];
+P.forBlock['sd_delete'] = b => `sd_delete(${v(b,'FILE',"'data.txt'")})\n`;
+P.forBlock['pin_write'] = b => `pin_write(${b.getFieldValue('PIN')}, ${b.getFieldValue('ON')==='1'?'True':'False'})\n`;
+P.forBlock['pin_read'] = b => [`pin_read(${b.getFieldValue('PIN')})`, O.FUNCTION_CALL];
+P.forBlock['pin_analog'] = b => [`analog(${b.getFieldValue('PIN')})`, O.FUNCTION_CALL];
+P.forBlock['pin_tone'] = b => `tone(${b.getFieldValue('PIN')}, ${v(b,'FREQ','440')}, ${v(b,'SEC','0.5')})\n`;
 P.forBlock['time_wait'] = b => `wait(${v(b,'S','1')})\n`;
 P.forBlock['loop_forever'] = (b, g) => 'while True:\n' + (g.statementToCode(b,'DO') || g.INDENT + 'pass\n') + g.INDENT + 'wait(0.01)\n';
 
@@ -955,11 +1478,22 @@ const toolbox = {kind:'categoryToolbox', contents:[
     {kind:'block', type:'color_pick', fields:{C:'RED'}},
     {kind:'block', type:'color_random'},
     {kind:'block', type:'color_rgb', inputs:{R:num(255), G:num(120), B:num(0)}}]},
-  {kind:'category', name:'Button & motion', colour:C_INPUT, contents:[
+  {kind:'category', name:'Sensors', colour:C_INPUT, contents:[
     {kind:'block', type:'input_wait'},
     {kind:'block', type:'input_button'},
     {kind:'block', type:'imu_tilt'},
-    {kind:'block', type:'imu_shaken'}]},
+    {kind:'block', type:'imu_shaken'},
+    {kind:'block', type:'imu_gyro'},
+    {kind:'block', type:'imu_temp'}]},
+  {kind:'category', name:'SD card', colour:C_SD, contents:[
+    {kind:'block', type:'sd_append', inputs:{TEXT:{block:{type:'imu_temp'}}, FILE:txt('data.txt')}},
+    {kind:'block', type:'sd_read', inputs:{FILE:txt('data.txt')}},
+    {kind:'block', type:'sd_delete', inputs:{FILE:txt('data.txt')}}]},
+  {kind:'category', name:'Pins', colour:C_PINS, contents:[
+    {kind:'block', type:'pin_write'},
+    {kind:'block', type:'pin_read'},
+    {kind:'block', type:'pin_analog'},
+    {kind:'block', type:'pin_tone', inputs:{FREQ:num(440), SEC:num(0.5)}}]},
   {kind:'category', name:'Time & loops', colour:'#5B80A5', contents:[
     {kind:'block', type:'time_wait', inputs:{S:num(1)}},
     {kind:'block', type:'loop_forever'},
@@ -1017,6 +1551,13 @@ const EXAMPLES = {
           nxt(S_('screen_shape', `<field name="SHAPE">crocodile</field>${sNum('X',86)}${sNum('Y',156)}${sNum('SIZE',128)}${sCol('COLOR','GREEN')}`,
             nxt(S_('screen_shape', `<field name="SHAPE">star</field>${sNum('X',46)}${sNum('Y',262)}${sNum('SIZE',64)}${sCol('COLOR','YELLOW')}`,
               nxt(S_('screen_shape', `<field name="SHAPE">heart</field>${sNum('X',126)}${sNum('Y',262)}${sNum('SIZE',60)}${sCol('COLOR','RED')}`)))))))))))),
+  'Thermometer': wrap(
+    S_('screen_fill', sCol('COLOR','BLACK'),
+      nxt(S_('screen_text', `${sTxt('TEXT','TEMP C')}${sNum('X',38)}${sNum('Y',90)}<field name="SIZE">2</field>${sCol('COLOR','CYAN')}`,
+        nxt(S_('loop_forever', `<statement name="DO">${
+          S_('screen_rect', `${sNum('X',0)}${sNum('Y',130)}${sNum('W',172)}${sNum('H',48)}${sCol('COLOR','BLACK')}<field name="FULL">TRUE</field>`,
+            nxt(S_('screen_text', `<value name="TEXT"><block type="imu_temp"></block></value>${sNum('X',26)}${sNum('Y',134)}<field name="SIZE">5</field>${sCol('COLOR','ORANGE')}`,
+              nxt(S_('time_wait', sNum('S',1))))))}</statement>`)))))),
   'Magic button': wrap(
     S_('screen_text', `${sTxt('TEXT','Press BOOT')}${sNum('X',6)}${sNum('Y',150)}<field name="SIZE">2</field>${sCol('COLOR','WHITE')}`,
       nxt(S_('loop_forever', `<statement name="DO">${
@@ -1094,6 +1635,8 @@ function notice(html){ $('notice').innerHTML = html; $('notice').hidden = false;
 function friendly(err){
   if (/KeyboardInterrupt/.test(err)) return ['The program stopped.', 'info'];
   if (/ImportError/.test(err) && /board/.test(err)) return ['The screen library is missing from the board. Reload the page and connect again to install it.', 'err'];
+  if (/NO_SD_CARD/.test(err)) return ['No SD card found. Put a FAT32 card in the slot and click Run again.', 'err'];
+  if (/NO_SUCH_FILE/.test(err)) return ['That file isn\'t on the SD card yet. Add a line to it first.', 'err'];
   if (/OSError/.test(err)) return ['The board couldn\'t talk to the screen or sensor. Press RESET on the board and connect again.', 'err'];
   if (/NameError/.test(err)) return ['You used a variable before giving it a value.', 'err'];
   if (/ZeroDivisionError/.test(err)) return ['You tried to divide by zero.', 'err'];
@@ -1179,6 +1722,7 @@ async function ensureLibrary(){
   if (r.out.includes(BOARD_TAG)) return;
   setStatus('busy', 'Installing screen library…');
   log('Installing the screen library on the board. This takes a few seconds and only happens once.');
+  await uploadFile('sdcard.py', SDCARD_PY);
   await uploadFile('board.py', BOARD_PY);
   log('Screen library installed.', 'ok');
 }
