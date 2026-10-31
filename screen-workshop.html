@@ -2350,18 +2350,21 @@ async function flash(){
     let bin = ''; for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 8192));
     flog('Loading the install tool…');
     let mod = null;
-    for (const cdn of CDNS) { try { mod = await import(cdn + 'esptool-js@0.4.5/bundle.js'); break; } catch(e) {} }
+    /* 0.5.7 knows how to reset boards that use the chip's built-in USB port (like the C3); 0.4.5 is the fallback */
+    for (const ver of ['0.5.7', '0.4.5']) { for (const cdn of CDNS) { try { mod = await import(cdn + 'esptool-js@' + ver + '/bundle.js'); break; } catch(e) {} } if (mod) break; }
     if (!mod) throw new Error('Couldn\'t load the install tool. Check your internet connection.');
     const {ESPLoader, Transport} = mod;
     const port = await navigator.serial.requestPort();
     transport = new Transport(port, false);
-    const loader = new ESPLoader({transport, baudrate:460800, romBaudrate:115200,
+    /* on the chip's own USB port the speed setting does nothing, and changing it can stall the connection */
+    const pi = port.getInfo ? port.getInfo() : {}, usbJtag = pi.usbVendorId === 0x303a && pi.usbProductId === 0x1001;
+    const loader = new ESPLoader({transport, baudrate: usbJtag ? 115200 : 460800, romBaudrate:115200,
       terminal:{clean(){}, writeLine:t => flog(t), write:t => {}}});
     const chip = await loader.main();
     flog('Found: ' + chip);
     await loader.writeFlash({fileArray:[{data:bin, address:0}], flashSize:'keep', flashMode:'keep', flashFreq:'keep',
       eraseAll:true, compress:true, reportProgress:(i, w, t) => { $('flashBar').style.width = Math.round(w / t * 100) + '%'; }});
-    await loader.hardReset();
+    if (loader.after) await loader.after('hard_reset'); else await loader.hardReset();
     flog('Done! Close this window and click "Connect board".');
     $('flashBar').style.width = '100%';
   } catch(e) {
