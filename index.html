@@ -1,4 +1,4 @@
-<title>Screen Workshop</title>
+ <title>Screen Workshop</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2351,7 +2351,7 @@ async function flash(){
     const {ESPLoader, Transport} = mod;
     const port = await navigator.serial.requestPort();
     transport = new Transport(port, false);
-    const loader = new ESPLoader({transport, baudrate:460800, romBaudrate:115200,
+    const loader = new ESPLoader({transport, baudrate:115200, romBaudrate:115200,  /* the C3 uses its built-in USB port: changing speed only causes timeouts there */
       terminal:{clean(){}, writeLine:t => flog(t), write:t => {}}});
     const chip = await loader.main();
     flog('Found: ' + chip);
